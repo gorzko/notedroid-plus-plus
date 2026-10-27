@@ -2,8 +2,12 @@ package com.notedroidplusplus.app.core
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.notedroidplusplus.app.tools.Json
 
-/** Persists the most recently opened files (URI + display name). */
+/**
+ * Persists the most recently opened files (URI + display name).
+ * Stored as a JSON array so names containing '|' or newlines stay intact.
+ */
 class RecentFiles(context: Context, private val max: Int = 10) {
 
     private val prefs: SharedPreferences =
@@ -19,6 +23,17 @@ class RecentFiles(context: Context, private val max: Int = 10) {
 
     fun list(): List<Entry> {
         val raw = prefs.getString("recent", null) ?: return emptyList()
+        if (raw.startsWith("[")) {
+            return runCatching {
+                ((Json.parse(raw) as? Json.Value.Arr)?.items ?: emptyList()).mapNotNull { v ->
+                    val obj = v as? Json.Value.Obj ?: return@mapNotNull null
+                    val uri = (obj.entries.firstOrNull { it.first == "uri" }?.second as? Json.Value.Str)?.s
+                    val name = (obj.entries.firstOrNull { it.first == "name" }?.second as? Json.Value.Str)?.s
+                    if (!uri.isNullOrBlank()) Entry(uri, name ?: uri) else null
+                }
+            }.getOrDefault(emptyList())
+        }
+        // legacy pipe/newline format
         return raw.split("\n").filter { it.contains('|') }.mapNotNull { line ->
             val uri = line.substringBefore('|')
             val name = line.substringAfter('|')
@@ -31,6 +46,9 @@ class RecentFiles(context: Context, private val max: Int = 10) {
     }
 
     private fun save(entries: List<Entry>) {
-        prefs.edit().putString("recent", entries.joinToString("\n") { "${it.uri}|${it.name}" }).apply()
+        val arr = Json.Value.Arr(entries.map {
+            Json.Value.Obj(listOf("uri" to Json.Value.Str(it.uri), "name" to Json.Value.Str(it.name)))
+        })
+        prefs.edit().putString("recent", Json.stringify(arr, 0)).apply()
     }
 }

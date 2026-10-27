@@ -85,4 +85,5 @@ object MarkdownRenderer {
         .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
+        .replace("\"", "&quot;")
 }

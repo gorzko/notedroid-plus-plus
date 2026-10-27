@@ -38,12 +38,6 @@
             android:parentActivityName=".MainActivity" />
 
         <activity
-            android:name=".plugins.PluginListActivity"
-            android:exported="false"
-            android:label="@string/plugins_title"
-            android:parentActivityName=".MainActivity" />
-
-        <activity
             android:name=".plugins.PluginImportActivity"
             android:exported="false"
             android:label="@string/plugin_import"

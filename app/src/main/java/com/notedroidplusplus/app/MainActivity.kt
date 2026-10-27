@@ -15,6 +15,7 @@ import android.webkit.MimeTypeMap
 import android.widget.EditText
 import android.widget.PopupMenu
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -58,7 +59,6 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private lateinit var pluginRegistry: PluginRegistry
     private lateinit var recentFiles: RecentFiles
     private lateinit var sessionStore: SessionStore
-    private var saveAsMime = "text/plain"
     private var pendingSaveEncoding: String? = null
     private var scaleDetector: ScaleGestureDetector? = null
 
@@ -83,7 +83,17 @@ class MainActivity : AppCompatActivity(), PluginHost {
         }
 
     private val saveAsLauncher =
-        registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        registerForActivityResult(object : ActivityResultContract<Pair<String, String>, Uri?>() {
+            override fun createIntent(context: android.content.Context, input: Pair<String, String>): Intent =
+                Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    type = input.first
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    putExtra(Intent.EXTRA_TITLE, input.second)
+                }
+
+            override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
+                if (resultCode == RESULT_OK) intent?.data else null
+        }) { uri ->
             val savedUri = uri
             if (savedUri != null) {
                 val s = if (pendingCloseIndex >= 0) tabs.getOrNull(pendingCloseIndex) else activeSession()
@@ -416,7 +426,6 @@ class MainActivity : AppCompatActivity(), PluginHost {
         val label = tab.customView?.findViewById<android.widget.TextView>(R.id.tab_label)
         val closeBtn = tab.customView?.findViewById<android.widget.ImageView>(R.id.tab_close)
         label?.text = doc.fileName
-        val tabIndex = tabs.size
         closeBtn?.setOnClickListener {
             val idx = tabs.indexOfFirst { it.tab === tab }
             if (idx >= 0) closeTabAt(idx)
@@ -541,7 +550,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .setItems(encodings.toTypedArray()) { _, which ->
                 pendingSaveEncoding = encodings[which]
                 pendingCloseIndex = -1
-                saveAsLauncher.launch(s.document.fileName)
+                saveAsLauncher.launch(mimeFor(s.document.fileName) to s.document.fileName)
             }
             .setNegativeButton(R.string.cancel) { _, _ -> pendingSaveEncoding = null }
             .show()
@@ -584,7 +593,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
                     if (saveSessionTo(s, Uri.parse(s.document.uri))) removeTab(index)
                 } else {
                     pendingCloseIndex = index
-                    saveAsLauncher.launch(s.document.fileName)
+                    saveAsLauncher.launch(mimeFor(s.document.fileName) to s.document.fileName)
                 }
             }
             .setNegativeButton(R.string.no) { _, _ -> removeTab(index) }
@@ -597,16 +606,20 @@ class MainActivity : AppCompatActivity(), PluginHost {
             item(getString(R.string.action_close)) { closeTabAt(active) }
             item(getString(R.string.action_close_others)) {
                 val keep = active
+                val dirty = tabs.count { it.document.modified && tabs.indexOf(it) != keep }
                 tabs.indices.filterNot { it == keep }.reversed().forEach { idx ->
                     if (!tabs[idx].document.modified) removeTab(idx)
                 }
                 activateTab(0.coerceAtMost(tabs.size - 1))
+                if (dirty > 0) Toast.makeText(this, getString(R.string.tabs_kept_dirty, dirty), Toast.LENGTH_SHORT).show()
             }
             item(getString(R.string.action_close_all)) {
+                val dirty = tabs.count { it.document.modified }
                 tabs.indices.reversed().forEach { idx ->
                     if (!tabs[idx].document.modified) removeTab(idx)
                 }
                 if (tabs.isEmpty()) addTab(null, null)
+                if (dirty > 0) Toast.makeText(this, getString(R.string.tabs_kept_dirty, dirty), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -623,7 +636,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
                         if (saveSessionTo(s, Uri.parse(uri))) removeTab(active) else pendingCloseIndex = -1
                     } else {
                         pendingCloseIndex = active
-                        saveAsLauncher.launch(s.document.fileName)
+                        saveAsLauncher.launch(mimeFor(s.document.fileName) to s.document.fileName)
                     }
                 }
                 .setNegativeButton(R.string.no) { _, _ -> removeTab(active) }

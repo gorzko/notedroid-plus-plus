@@ -31,6 +31,8 @@ class FindInFilesActivity : AppCompatActivity() {
     private lateinit var resultsList: ListView
     private lateinit var progress: android.widget.ProgressBar
     private var results: List<SearchHit> = emptyList()
+    @Volatile private var searchCancelled = false
+    private var searchThread: Thread? = null
 
     private val treeLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -51,6 +53,9 @@ class FindInFilesActivity : AppCompatActivity() {
         val prefill = intent.getStringExtra(EXTRA_QUERY)
         if (!prefill.isNullOrBlank()) queryInput.setText(prefill)
 
+        findViewById<Button>(R.id.fif_cancel).setOnClickListener {
+            searchCancelled = true
+        }
         findViewById<Button>(R.id.fif_search).setOnClickListener {
             if (queryInput.text.isNullOrBlank()) {
                 Toast.makeText(this, R.string.find_what, Toast.LENGTH_SHORT).show()
@@ -125,14 +130,17 @@ class FindInFilesActivity : AppCompatActivity() {
         dir: DocumentFile,
         opts: FindOptions,
         resolver: android.content.ContentResolver,
-        onFile: (List<SearchHit>) -> Unit
+        onFile: (List<SearchHit>) -> Unit,
+        onScanned: () -> Unit,
+        isCancelled: () -> Boolean
     ) {
         dir.listFiles().forEach { doc ->
-            if (Thread.currentThread().isInterrupted) return
+            if (isCancelled()) return
             if (doc.isDirectory) {
-                walk(doc, opts, resolver, onFile)
+                walk(doc, opts, resolver, onFile, onScanned, isCancelled)
             } else if (doc.isFile) {
                 val hits = searchFile(doc, opts, resolver)
+                onScanned()
                 if (hits.isNotEmpty()) onFile(hits)
             }
         }

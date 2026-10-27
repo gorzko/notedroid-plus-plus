@@ -38,11 +38,26 @@
             android:text="@string/use_regex" />
     </LinearLayout>
 
-    <Button
-        android:id="@+id/fif_search"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/action_find_in_files" />
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/fif_search"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="@string/action_find_in_files" />
+
+        <Button
+            android:id="@+id/fif_cancel"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/cancel"
+            android:visibility="gone" />
+    </LinearLayout>
 
     <ProgressBar
         android:id="@android:id/progress"

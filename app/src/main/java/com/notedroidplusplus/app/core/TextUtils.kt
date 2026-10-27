@@ -49,24 +49,8 @@ object TextUtils {
     fun convertLineEndings(text: String, eol: String): String =
         normalize(text).replace("\n", eol)
 
-    fun detectIndentation(text: String): String {
-        val lines = normalize(text).split("\n")
-        val tabs = lines.count { it.startsWith("\t") }
-        val spaces = lines.count { it.startsWith(" ") }
-        return if (tabs > spaces) "\t" else "    "
-    }
 
-    fun lineStartOf(text: String, pos: Int): Int {
-        var i = pos - 1
-        while (i >= 0 && text[i] != '\n') i--
-        return i + 1
-    }
 
-    fun lineEndOf(text: String, pos: Int): Int {
-        var i = pos
-        while (i < text.length && text[i] != '\n') i++
-        return i
-    }
 
     fun lineAt(text: String, lineIndex: Int): String {
         var idx = 0

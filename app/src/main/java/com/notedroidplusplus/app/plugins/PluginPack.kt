@@ -62,7 +62,9 @@ object PluginPacks {
                 host.setText(if (sel.isNotEmpty()) text.replace(sel, trimmed) else trimmed)
             }
             "base64-encode" -> host.setText(android.util.Base64.encodeToString(target.toByteArray(), android.util.Base64.NO_WRAP))
-            "base64-decode" -> host.setText(String(android.util.Base64.decode(target, android.util.Base64.NO_WRAP)))
+            "base64-decode" -> runCatching {
+                host.setText(String(android.util.Base64.decode(target, android.util.Base64.NO_WRAP)))
+            }.onFailure { host.showStatus("Not valid Base64") }
             "insert" -> {
                 val arg = cmd.arg ?: ""
                 val caret = host.caret()

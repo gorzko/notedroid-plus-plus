@@ -65,7 +65,6 @@
     <string name="yes">Yes</string>
     <string name="no">No</string>
     <string name="cancel">Cancel</string>
-    <string name="browser_title">File browser</string>
     <string name="error_invalid_json">Invalid JSON</string>
     <string name="error_invalid_xml">Invalid XML</string>
     <string name="error_save_failed">Save failed: %1$s</string>
@@ -93,5 +92,6 @@
     <string name="restore_session_title">Restore session?</string>
     <string name="restore_session_msg">Restore %1$d previously open tab(s)?</string>
     <string name="encoding_title">Choose encoding</string>
+    <string name="tabs_kept_dirty">%1$d tab(s) with unsaved changes were kept</string>
     <string name="action_zoom_out">Zoom Out</string>
 </resources>

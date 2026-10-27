@@ -45,12 +45,14 @@ class PluginImportActivity : AppCompatActivity() {
         val ok = runCatching {
             val text = contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
                 ?: throw IllegalStateException("Cannot read manifest")
-            val packName = com.notedroidplusplus.app.tools.Json.parse(text).let { v ->
+            val rawName = com.notedroidplusplus.app.tools.Json.parse(text).let { v ->
                 (v as? com.notedroidplusplus.app.tools.Json.Value.Obj)
                     ?.entries?.firstOrNull { it.first == "name" }?.second
                     ?.let { sv -> (sv as? com.notedroidplusplus.app.tools.Json.Value.Str)?.s }
-            } ?: "pack_${System.currentTimeMillis()}"
-            val dir = File(PluginPacks.packsDir(this), packName)
+            }
+            val sanitized = rawName?.replace(Regex("[^A-Za-z0-9_-]"), "_")?.take(48)?.ifBlank { null }
+                ?: "pack_${System.currentTimeMillis()}"
+            val dir = File(PluginPacks.packsDir(this), sanitized)
             dir.mkdirs()
             File(dir, "plugin.json").writeText(text)
         }.isSuccess

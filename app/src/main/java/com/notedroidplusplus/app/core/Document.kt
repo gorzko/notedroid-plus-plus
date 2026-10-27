@@ -12,5 +12,5 @@ data class Document(
     val readOnly: Boolean = false
 ) {
     val isNew: Boolean get() = uri == null
-    val lineCount: Int get() = text.count('\\n') + 1
+    val lineCount: Int get() = text.count { it == '\n' } + 1
 }

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+    <SwitchPreferenceCompat
+        app:key="dark_theme"
+        app:title="Dark theme"
+        app:defaultValue="false" />
+    <SwitchPreferenceCompat
+        app:key="show_line_numbers"
+        app:title="Show line numbers"
+        app:defaultValue="true" />
+    <SwitchPreferenceCompat
+        app:key="wrap_lines"
+        app:title="Wrap lines"
+        app:defaultValue="false" />
+    <SeekBarPreference
+        app:key="font_size"
+        app:title="Editor font size (sp)"
+        app:defaultValue="14"
+        app:min="8"
+        android:max="40" />
+</PreferenceScreen>

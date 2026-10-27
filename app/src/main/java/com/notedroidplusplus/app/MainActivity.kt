@@ -190,7 +190,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun onTextChanged() {
         val s = activeSession() ?: return
-        val modified = s.document.uri != null || editor.text.isNotEmpty()
+        val modified = s.document.uri != null || !editor.text.isNullOrEmpty()
         if (modified != s.document.modified || editor.text.toString() != s.document.text) {
             s.document = s.document.copy(text = editor.text.toString(), modified = modified)
         }
@@ -266,7 +266,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun removeTab(index: Int) {
         if (index < 0 || index >= tabs.size) return
-        binding.tabLayout.removeTab(tabs[index].tab)
+        tabs[index].tab?.let { binding.tabLayout.removeTab(it) }
         tabs.removeAt(index)
         if (tabs.isEmpty()) { addTab(null, null); return }
         active = (active).coerceAtMost(tabs.size - 1)
@@ -318,7 +318,7 @@ class MainActivity : AppCompatActivity() {
         if (text.substring(selStart, editor.selectionEnd) == findOptions.query ||
             (findOptions.regex && Regex(findOptions.query).matches(text.substring(selStart, editor.selectionEnd)))
         ) {
-            editor.text.replace(selStart, editor.selectionEnd, findOptions.replaceWith)
+            editor.text?.replace(selStart, editor.selectionEnd, findOptions.replaceWith)
         }
         findNextMatch()
     }
@@ -480,9 +480,20 @@ class MainActivity : AppCompatActivity() {
     private fun showEditMenu() = popup {
         item(getString(R.string.action_undo)) { performUndo() }
         item(getString(R.string.action_redo)) { performRedo() }
-        item(getString(R.string.action_cut)) { editor.cut() }
-        item(getString(R.string.action_copy)) { editor.copy() }
-        item(getString(R.string.action_paste)) { editor.paste() }
+        item(getString(R.string.action_cut)) {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("text", editor.text?.substring(editor.selectionStart, editor.selectionEnd).orEmpty()))
+            editor.text?.delete(editor.selectionStart, editor.selectionEnd)
+        }
+        item(getString(R.string.action_copy)) {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("text", editor.text?.substring(editor.selectionStart, editor.selectionEnd).orEmpty()))
+        }
+        item(getString(R.string.action_paste)) {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val clip = cm.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+            editor.text?.insert(editor.selectionStart.coerceAtMost(editor.selectionEnd), clip)
+        }
         item(getString(R.string.action_select_all)) { editor.selectAll() }
         item(getString(R.string.action_uppercase)) { transformCase { t, s, e -> TextUtils.toUpper(t, s, e) } }
         item(getString(R.string.action_lowercase)) { transformCase { t, s, e -> TextUtils.toLower(t, s, e) } }

@@ -26,15 +26,10 @@ object XmlTool {
 
         val factory = javax.xml.transform.TransformerFactory.newInstance()
         val transformer = factory.newTransformer()
-        if (indent > 0) {
-            try {
-                transformer.setAttribute("indent-number", indent)
-            } catch (_: IllegalArgumentException) {
-            }
-        }
         transformer.setOutputProperty(javax.xml.transform.OutputKeys.OMIT_XML_DECLARATION, "yes")
         if (indent > 0) {
             transformer.setOutputProperty(javax.xml.transform.OutputKeys.INDENT, "yes")
+            transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", indent.toString())
         }
         val out = java.io.StringWriter()
         transformer.transform(javax.xml.transform.dom.DOMSource(doc), javax.xml.transform.stream.StreamResult(out))

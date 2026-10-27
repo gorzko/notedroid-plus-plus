@@ -239,7 +239,7 @@ class CodeEditText @JvmOverloads constructor(
         super.onDraw(canvas)
     }
 
-    private fun lineHeight(): Int = (paint.descent - paint.ascent).toInt()
+    private fun lineHeight(): Int = (paint.fontMetrics.descent - paint.fontMetrics.ascent).toInt()
 
     private fun drawBracketRect(canvas: Canvas, gl: Layout, line: Int, offset: Int) {
         val top = gl.getLineTop(line) + paddingTop - scrollY

@@ -392,7 +392,7 @@ object SyntaxHighlighter {
             val tagEnd = inner.indexOfFirst { it == ' ' || it == '\t' || it == '\n' || it == '/' }
             val tagNameEndInTag = if (tagEnd < 0) inner.length else tagEnd
             val nameStart = lt + 1 + (if (isDecl || isPi) 1 else 0) + (if (inner.startsWith("/")) 1 else 0)
-            val nameLen = tagNameEndInTag - (if (inner.startsWith("/")) 1 else 0) - (if (isDecl || isPIEnd(inner, isPI)) 1 else 0)
+            val nameLen = tagNameEndInTag - (if (inner.startsWith("/")) 1 else 0) - (if (isDecl || (isPi && isPIEnd(inner, true))) 1 else 0)
             if (nameLen > 0) tokens.add(SyntaxToken(nameStart, nameStart + nameLen, TokenKind.TAG))
 
             // attributes

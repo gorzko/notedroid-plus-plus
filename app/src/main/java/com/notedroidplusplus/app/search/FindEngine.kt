@@ -20,9 +20,9 @@ fun findNext(text: String, start: Int, opts: FindOptions): Int {
     if (opts.regex) {
         return try {
             val re = if (opts.matchCase) Regex(opts.query) else Regex(opts.query, RegexOption.IGNORE_CASE)
-            re.find(text, start)?.range?.first
-                ?: if (opts.wrapAround) re.find(text)?.range?.first else null
-                ?: -1
+            val fwd = re.find(text, start)?.range?.first
+            val wrapped = if (opts.wrapAround) re.find(text)?.range?.first else null
+            fwd ?: wrapped ?: -1
         } catch (_: Exception) {
             -1
         }

@@ -12,7 +12,11 @@ object JsonTool {
         } else {
             org.json.JSONObject(input)
         }
-        if (indent <= 0) v.toString() else v.toString(indent)
+        if (indent <= 0) v.toString() else when (v) {
+            is org.json.JSONObject -> v.toString(indent)
+            is org.json.JSONArray -> v.toString(indent)
+            else -> v.toString()
+        }
     }
 
     fun minify(input: String): Result<String> = runCatching {

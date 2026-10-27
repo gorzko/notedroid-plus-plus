@@ -1,30 +1,16 @@
 package com.notedroidplusplus.app.tools
 
 /**
- * JSON prettify/minify implemented on top of Android's built-in org.json so no extra
- * dependency is needed. Pure JVM-testable.
+ * JSON prettify/minify built on the self-contained [Json] parser so it behaves
+ * identically on the JVM (unit tests) and on Android.
  */
 object JsonTool {
 
     fun prettify(input: String, indent: Int = 4): Result<String> = runCatching {
-        val v = if (input.trim().startsWith("[")) {
-            org.json.JSONArray(input)
-        } else {
-            org.json.JSONObject(input)
-        }
-        if (indent <= 0) v.toString() else when (v) {
-            is org.json.JSONObject -> v.toString(indent)
-            is org.json.JSONArray -> v.toString(indent)
-            else -> v.toString()
-        }
+        Json.stringify(Json.parse(input), indent)
     }
 
     fun minify(input: String): Result<String> = runCatching {
-        val v = if (input.trim().startsWith("[")) {
-            org.json.JSONArray(input)
-        } else {
-            org.json.JSONObject(input)
-        }
-        v.toString()
+        Json.stringify(Json.parse(input), 0)
     }
 }

@@ -57,7 +57,8 @@ class SyntaxHighlighterTest {
     fun xmlComment() {
         val text = "<root><!-- c --><a/></root>"
         val toks = SyntaxHighlighter.tokenize(text, LanguageMode.XML)
-        assertEquals("<!-- c -->", text.substring(toks[0].start, toks[0].end))
+        val comment = toks.first { it.kind == TokenKind.COMMENT }
+        assertEquals("<!-- c -->", text.substring(comment.start, comment.end))
     }
 
     @Test

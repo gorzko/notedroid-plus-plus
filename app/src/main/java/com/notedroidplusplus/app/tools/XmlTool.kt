@@ -2,28 +2,33 @@ package com.notedroidplusplus.app.tools
 
 /**
  * XML pretty-printer / minifier and well-formedness checker implemented with the
- * Android-provided javax.xml.transform pipeline. Pure JVM-testable via unit tests.
+ * javax.xml.transform pipeline (provided on both JVM and Android).
  */
 object XmlTool {
 
-    fun prettify(input: String, indent: Int = 4): Result<String> = transform(input, indent)
-
-    fun minify(input: String): Result<String> = transform(input, 0)
-
-    fun validate(input: String): Result<Unit> {
-        input.byteInputStream().use { stream ->
-            val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
-            factory.isNamespaceAware = true
-            factory.newDocumentBuilder().parse(stream)
-        }
-        return Result.success(Unit)
+    fun prettify(input: String, indent: Int = 4): Result<String> = runCatching {
+        val doc = parse(input)
+        val transformer = newTransformer(indent)
+        val out = java.io.StringWriter()
+        transformer.transform(javax.xml.transform.dom.DOMSource(doc), javax.xml.transform.stream.StreamResult(out))
+        val s = out.toString()
+        if (indent == 0) collapseWhitespace(s) else s.trimEnd() + "\n"
     }
 
-    private fun transform(input: String, indent: Int): Result<String> = runCatching {
+    fun minify(input: String): Result<String> = prettify(input, 0)
+
+    fun validate(input: String): Result<Unit> = runCatching {
+        parse(input)
+        Unit
+    }
+
+    private fun parse(input: String): org.w3c.dom.Document {
         val dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance()
         dbf.isNamespaceAware = true
-        val doc = dbf.newDocumentBuilder().parse(input.byteInputStream())
+        return dbf.newDocumentBuilder().parse(input.byteInputStream())
+    }
 
+    private fun newTransformer(indent: Int): javax.xml.transform.Transformer {
         val factory = javax.xml.transform.TransformerFactory.newInstance()
         val transformer = factory.newTransformer()
         transformer.setOutputProperty(javax.xml.transform.OutputKeys.OMIT_XML_DECLARATION, "yes")
@@ -31,12 +36,9 @@ object XmlTool {
             transformer.setOutputProperty(javax.xml.transform.OutputKeys.INDENT, "yes")
             transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", indent.toString())
         }
-        val out = java.io.StringWriter()
-        transformer.transform(javax.xml.transform.dom.DOMSource(doc), javax.xml.transform.stream.StreamResult(out))
-        val s = out.toString()
-        if (indent == 0) collapseWhitespace(s) else s.trimEnd() + "\n"
+        return transformer
     }
 
     private fun collapseWhitespace(s: String): String =
-        s.replace(">\\s+<".toRegex(), "><").trim()
+        s.replace(">\s+<".toRegex(), "><").trim()
 }

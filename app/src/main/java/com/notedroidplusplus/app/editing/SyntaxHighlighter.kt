@@ -553,9 +553,10 @@ object SyntaxHighlighter {
             if (i == n || text[i] == '\n') {
                 val line = text.substring(lineStart, i)
                 tokenizeMarkdownLine(tokens, text, lineStart, line)
+                if (i == n) break
                 lineStart = i + 1
             }
-            if (i < n) i++
+            i++
         }
         // inline: code spans and links
         var j = 0

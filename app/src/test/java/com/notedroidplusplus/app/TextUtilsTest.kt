@@ -20,8 +20,8 @@ class TextUtilsTest {
 
     @Test
     fun casing() {
-        assertEquals("ab CD", TextUtils.toUpper("ab cd", 0, 2))
-        assertEquals("AB cd", TextUtils.toUpper("ab cd", 0, 2).let { TextUtils.toLower(it, 3, 4) })
+        assertEquals("AB cd", TextUtils.toUpper("ab cd", 0, 2))
+        assertEquals("AB cd", TextUtils.toLower("AB CD", 3, 4))
         assertEquals("Ab cd", TextUtils.titleCase("ab cd", 0, 2))
         assertEquals("AB", TextUtils.toggleCase("ab", 0, 2))
     }
@@ -35,7 +35,7 @@ class TextUtilsTest {
     fun countMatchesWholeWord() {
         assertEquals(1, TextUtils.countMatches("cat catalog", "cat", false, true))
         assertEquals(2, TextUtils.countMatches("cat catalog", "cat", false, false))
-        assertEquals(2, TextUtils.countMatches("CAT cat", "cat", true, false).let { 1 }) // case-sensitive: only 'cat'
+        assertEquals(1, TextUtils.countMatches("CAT cat", "cat", true, false))
     }
 
     @Test

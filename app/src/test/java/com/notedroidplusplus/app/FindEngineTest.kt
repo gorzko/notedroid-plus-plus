@@ -13,7 +13,7 @@ class FindEngineTest {
 
     @Test
     fun findNextPlain() {
-        assertEquals(2, findNext("aXbcX", 0, FindOptions(query = "X")))
+        assertEquals(1, findNext("aXbcX", 0, FindOptions(query = "X")))
         assertEquals(4, findNext("aXbcX", 3, FindOptions(query = "X")))
     }
 
@@ -28,12 +28,12 @@ class FindEngineTest {
         val text = "cat catalog cat"
         val opts = FindOptions(query = "cat", wholeWord = true)
         assertEquals(0, findNext(text, 0, opts))
-        assertEquals(11, findNext(text, 1, opts))
+        assertEquals(12, findNext(text, 1, opts))
     }
 
     @Test
     fun findNextRegex() {
-        assertEquals(4, findNext("ab12cd", 0, FindOptions(query = "\\d+", regex = true)))
+        assertEquals(2, findNext("ab12cd", 0, FindOptions(query = "\\d+", regex = true)))
     }
 
     @Test
@@ -46,7 +46,7 @@ class FindEngineTest {
 
     @Test
     fun findPrev() {
-        assertEquals(2, findPrev("aXbXc", 4, FindOptions(query = "X")))
+        assertEquals(3, findPrev("aXbXc", 4, FindOptions(query = "X")))
     }
 
     @Test

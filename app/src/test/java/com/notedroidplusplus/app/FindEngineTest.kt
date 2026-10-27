@@ -41,7 +41,8 @@ class FindEngineTest {
         val text = "x x x"
         val opts = FindOptions(query = "x", wrapAround = true)
         assertEquals(2, findNext(text, 1, opts))
-        assertEquals(0, findNext(text, 4, opts))
+        assertEquals(4, findNext(text, 4, opts))
+        assertEquals(0, findNext(text, 5, opts))
     }
 
     @Test

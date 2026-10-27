@@ -87,4 +87,6 @@
     <string name="preview_markdown">Markdown preview</string>
     <string name="plugin_api_version">Plugin API v1</string>
     <string name="open_recent">Recent files</string>
+    <string name="action_zoom_in">Zoom In</string>
+    <string name="action_zoom_out">Zoom Out</string>
 </resources>

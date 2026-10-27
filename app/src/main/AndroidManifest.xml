@@ -37,11 +37,6 @@
             android:parentActivityName=".MainActivity" />
 
         <activity
-            android:name=".files.FileBrowserActivity"
-            android:exported="false"
-            android:parentActivityName=".MainActivity" />
-
-        <activity
             android:name=".plugins.PluginListActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />

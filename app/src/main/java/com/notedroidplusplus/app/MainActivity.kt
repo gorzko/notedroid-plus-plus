@@ -133,7 +133,7 @@ class MainActivity : AppCompatActivity() {
         syncActiveDocument()
         active = index
         val s = tabs[index]
-        editor.removeTextChangedListener(textListener())
+        editor.removeTextChangedListener(tw)
         editor.setText(s.document.text)
         editor.language = s.document.language
         editor.setSelection(s.document.text.length)

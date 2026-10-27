@@ -15,13 +15,19 @@ icon, dark theme, back/forward gesture support).
 - Line numbers, current-line highlight, bracket matching
 - Find / Replace with match case, whole word, regular expressions, wrap-around
   (Find Next / Find Prev buttons, keyboard search action)
+- Find in Files: searches a SAF folder tree (OpenDocumentTree), results are
+  file:line:column; tapping a result opens the file at that line
+- Recent files menu with persisted history
+- Per-tab close buttons (X) plus long-press Close / Close Others / Close All
+- Pinch-to-zoom in the editor (persisted with the font-size setting)
 - Go-to-line
 - Undo/Redo (200 steps, per-tab stacks), cut/copy/paste/select all
 - UPPERCASE / lowercase / Title Case / tOGGLE cASE, trim trailing whitespace
 - Encoding detection & conversion (UTF-8, UTF-16LE/BE, ASCII, ISO-8859-1, CP-1252);
   BOM detection is preserved on save
 - EOL conversion: Windows (CRLF), Unix (LF), Mac (CR)
-- State restoration across rotation/process death (tabs, texts, caret, undo)
+- State restoration across rotation (instance state) and hard process kill
+  (session snapshot with restore prompt on cold start)
 - Hardened XML processing (DOCTYPE/external entities disabled — XXE-safe)
 - Sandboxed preview: JS off, file/content access off, network loads blocked
 - Languages menu, per-tab language override, file-extension auto-detection
@@ -35,7 +41,12 @@ icon, dark theme, back/forward gesture support).
 - v1 plugin API (`PluginHost`, `PluginCommand`, `PluginDescriptor`)
 - `MainActivity` implements `PluginHost`, so built-in plugins run for real from
   the Plugins menu: MIME Base64 encode/decode, Lorem Ipsum, Word Count
-- Plugin registry designed for external plugin packs
+- External plugin packs: import a `plugin.json` manifest (Plugins → Import);
+  commands run in a declarative sandbox (upper/lower/trim/base64/insert) —
+  no arbitrary code execution
+- Save As picks the encoding first (UTF-8/UTF-16/…), matching the Notepad++
+  "Convert to" flow; MIME derived from the file extension
+- Tools → Validate XML reports well-formedness with error details
 
 ## Building
 

@@ -611,7 +611,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
                     if (!tabs[idx].document.modified) removeTab(idx)
                 }
                 activateTab(0.coerceAtMost(tabs.size - 1))
-                if (dirty > 0) Toast.makeText(this, getString(R.string.tabs_kept_dirty, dirty), Toast.LENGTH_SHORT).show()
+                if (dirty > 0) Toast.makeText(this@MainActivity, getString(R.string.tabs_kept_dirty, dirty), Toast.LENGTH_SHORT).show()
             }
             item(getString(R.string.action_close_all)) {
                 val dirty = tabs.count { it.document.modified }
@@ -619,7 +619,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
                     if (!tabs[idx].document.modified) removeTab(idx)
                 }
                 if (tabs.isEmpty()) addTab(null, null)
-                if (dirty > 0) Toast.makeText(this, getString(R.string.tabs_kept_dirty, dirty), Toast.LENGTH_SHORT).show()
+                if (dirty > 0) Toast.makeText(this@MainActivity, getString(R.string.tabs_kept_dirty, dirty), Toast.LENGTH_SHORT).show()
             }
         }
     }

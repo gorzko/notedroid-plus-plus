@@ -85,15 +85,24 @@ class FindInFilesActivity : AppCompatActivity() {
             regex = regex.isChecked
         )
         progress.visibility = View.VISIBLE
-        thread {
+        searchCancelled = false
+        findViewById<Button>(R.id.fif_search).isEnabled = false
+        findViewById<Button>(R.id.fif_cancel).visibility = View.VISIBLE
+        progress.visibility = View.VISIBLE
+        searchThread = thread {
             val hits = mutableListOf<SearchHit>()
             val resolver = contentResolver
             val root = DocumentFile.fromTreeUri(this, treeUri)
             if (root != null) {
-                walk(root, opts, resolver) { hits.addAll(it) }
+                walk(root, opts, resolver,
+                    onFile = { fileHits -> hits.addAll(fileHits) },
+                    onScanned = { },
+                    isCancelled = { searchCancelled })
             }
             runOnUiThread {
                 progress.visibility = View.GONE
+                findViewById<Button>(R.id.fif_search).isEnabled = true
+                findViewById<Button>(R.id.fif_cancel).visibility = View.GONE
                 results = hits
                 if (hits.isEmpty()) {
                     Toast.makeText(this, R.string.toast_no_match, Toast.LENGTH_SHORT).show()

@@ -39,6 +39,8 @@ object XmlTool {
         return transformer
     }
 
-    private fun collapseWhitespace(s: String): String =
-        s.replace(">\s+<".toRegex(), "><").trim()
+    private fun collapseWhitespace(s: String): String {
+        val re = Regex(">" + "\\" + "s+<")
+        return s.replace(re, "><").trim()
+    }
 }

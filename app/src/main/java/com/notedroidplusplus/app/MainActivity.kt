@@ -919,7 +919,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.action_find_in_files)) {
             refreshFindOptions()
             fifLauncher.launch(
-                Intent(this, FindInFilesActivity::class.java)
+                Intent(this@MainActivity, FindInFilesActivity::class.java)
                     .putExtra(FindInFilesActivity.EXTRA_QUERY, binding.findInput.text.toString())
             )
         }
@@ -1010,7 +1010,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun showPluginsMenu() = popup {
-        item(getString(R.string.plugin_import)) { PluginImportActivity.start(this) }
+        item(getString(R.string.plugin_import)) { PluginImportActivity.start(this@MainActivity) }
         menu.add(getString(R.string.plugin_builtins)).isEnabled = false
         pluginRegistry.discover().forEachIndexed { pi, plugin ->
             menu.add(plugin.name).isEnabled = false

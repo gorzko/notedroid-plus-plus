@@ -14,13 +14,18 @@ icon, dark theme, back/forward gesture support).
   Lua, Makefile, Markdown, TeX) modeled on Notepad++ `stylers.model.xml` colors
 - Line numbers, current-line highlight, bracket matching
 - Find / Replace with match case, whole word, regular expressions, wrap-around
-- Find-in-Files results model, Go-to-line
-- Undo/Redo (200 steps), cut/copy/paste/select all
+  (Find Next / Find Prev buttons, keyboard search action)
+- Go-to-line
+- Undo/Redo (200 steps, per-tab stacks), cut/copy/paste/select all
 - UPPERCASE / lowercase / Title Case / tOGGLE cASE, trim trailing whitespace
-- Encoding detection & conversion (UTF-8, UTF-16LE/BE, ASCII, ISO-8859-1, CP-1252)
+- Encoding detection & conversion (UTF-8, UTF-16LE/BE, ASCII, ISO-8859-1, CP-1252);
+  BOM detection is preserved on save
 - EOL conversion: Windows (CRLF), Unix (LF), Mac (CR)
+- State restoration across rotation/process death (tabs, texts, caret, undo)
+- Hardened XML processing (DOCTYPE/external entities disabled — XXE-safe)
+- Sandboxed preview: JS off, file/content access off, network loads blocked
 - Languages menu, per-tab language override, file-extension auto-detection
-- Light/Dark theme, wrap lines, zoom in/out, settings screen
+- Light/Dark theme (persisted), wrap lines, zoom in/out, functional settings screen
 
 **New built-in features**
 - **Preview** for Markdown and HTML (sandboxed WebView, JavaScript disabled)
@@ -28,7 +33,8 @@ icon, dark theme, back/forward gesture support).
 
 **Plugin support**
 - v1 plugin API (`PluginHost`, `PluginCommand`, `PluginDescriptor`)
-- Built-in plugins: MIME Base64 encode/decode, Lorem Ipsum, Word Count
+- `MainActivity` implements `PluginHost`, so built-in plugins run for real from
+  the Plugins menu: MIME Base64 encode/decode, Lorem Ipsum, Word Count
 - Plugin registry designed for external plugin packs
 
 ## Building

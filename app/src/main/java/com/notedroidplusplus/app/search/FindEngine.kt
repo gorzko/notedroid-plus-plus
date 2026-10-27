@@ -50,6 +50,16 @@ private fun findOnceWrapped(text: String, opts: FindOptions): Int {
 
 fun findPrev(text: String, from: Int, opts: FindOptions): Int {
     if (opts.query.isEmpty()) return -1
+    if (opts.regex) {
+        return try {
+            val re = if (opts.matchCase) Regex(opts.query) else Regex(opts.query, RegexOption.IGNORE_CASE)
+            val starts = re.findAll(text).map { it.range.first }.toList()
+            val hit = starts.lastOrNull { it < from } ?: if (opts.wrapAround) starts.lastOrNull() else null
+            hit ?: -1
+        } catch (_: Exception) {
+            -1
+        }
+    }
     val hay = if (opts.matchCase) text else text.lowercase()
     val needle = if (opts.matchCase) opts.query else opts.query.lowercase()
     var idx = minOf(from - 1, hay.length - needle.length)
@@ -68,8 +78,8 @@ fun replaceAll(text: String, opts: FindOptions): Pair<String, Int> {
     if (opts.regex) {
         return try {
             val re = if (opts.matchCase) Regex(opts.query) else Regex(opts.query, RegexOption.IGNORE_CASE)
-            val result = re.replace(text) { count++; it.value }
-            result to count
+            count = re.findAll(text).count()
+            re.replace(text, opts.replaceWith) to count
         } catch (_: Exception) {
             text to 0
         }

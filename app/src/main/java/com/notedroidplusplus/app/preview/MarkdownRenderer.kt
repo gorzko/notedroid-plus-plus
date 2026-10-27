@@ -74,7 +74,10 @@ object MarkdownRenderer {
         r = Regex("`([^`]+)`").replace(r) { "<code>${it.groupValues[1]}</code>" }
         r = Regex("\\*\\*([^*]+)\\*\\*").replace(r) { "<b>${it.groupValues[1]}</b>" }
         r = Regex("\\*([^*]+)\\*").replace(r) { "<i>${it.groupValues[1]}</i>" }
-        r = Regex("\\[([^]]+)]\\(([^)]+)\\)").replace(r) { "<a href=\"${it.groupValues[2]}\">${it.groupValues[1]}</a>" }
+        r = Regex("\\[([^]]+)]\\(([^)]+)\\)").replace(r) { m ->
+            val url = m.groupValues[2].replace("\"", "%22")
+            "<a href=\"" + url + "\">" + m.groupValues[1] + "</a>"
+        }
         return r
     }
 

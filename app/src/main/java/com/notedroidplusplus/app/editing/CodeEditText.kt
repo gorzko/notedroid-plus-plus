@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.text.Editable
 import android.text.Layout
+import android.text.Spanned
 import android.text.TextWatcher
 import android.util.AttributeSet
 import android.view.Gravity
@@ -63,8 +64,7 @@ class CodeEditText @JvmOverloads constructor(
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun afterTextChanged(s: Editable?) {
-                updateGutter()
-                rehighlight()
+                scheduleHighlight()
             }
         })
         viewTreeObserver.addOnScrollChangedListener { invalidate() }
@@ -106,29 +106,62 @@ class CodeEditText @JvmOverloads constructor(
         val paint = paint
         gutterPaint.textSize = paint.textSize * 0.85f
         if (showLineNumbers) {
-            val lines = (editableText?.toString()?.count { it == '\n' } ?: 0) + 1
+            val lines = (editableText?.length ?: 0).let { len ->
+                var c = 1
+                for (i in 0 until len) if (editableText[i] == '\n') c++
+                c
+            }
             val digits = maxOf(3, lines.toString().length)
             val w = (digits * paint.measureText("8") * 0.9f).toInt() + 16
-            if (w != gutterWidth) gutterWidth = w
-            setPadding(gutterWidth + 10, paddingTop, paddingRight, paddingBottom)
+            if (w != gutterWidth) {
+                gutterWidth = w
+                setPadding(gutterWidth + 10, paddingTop, paddingRight, paddingBottom)
+            }
         } else {
-            gutterWidth = 0
-            setPadding(10, paddingTop, paddingRight, paddingBottom)
+            if (gutterWidth != 0) {
+                gutterWidth = 0
+                setPadding(10, paddingTop, paddingRight, paddingBottom)
+            }
         }
         invalidate()
     }
 
+    private val highlightRunnable = Runnable {
+        updateGutter()
+        rehighlightNow()
+    }
+
+    private var highlightScheduled = false
+
+    private fun scheduleHighlight() {
+        if (highlightScheduled) return
+        highlightScheduled = true
+        postDelayed(highlightRunnable, 150)
+    }
+
     fun rehighlight() {
+        removeCallbacks(highlightRunnable)
+        highlightScheduled = false
+        rehighlightNow()
+    }
+
+    private fun rehighlightNow() {
+        highlightScheduled = false
         val e = editableText ?: return
         e.getSpans(0, e.length, SyntaxSpan::class.java).forEach { e.removeSpan(it) }
         if (colors.isNotEmpty()) {
             SyntaxHighlighter.tokenize(e.toString(), language).forEach { tok ->
                 val color = colors[tok.kind] ?: return@forEach
-                e.setSpan(SyntaxSpan(color), tok.start, tok.end, 0)
+                e.setSpan(SyntaxSpan(color), tok.start, tok.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
         }
         computeBracket()
         invalidate()
+    }
+
+    fun updateGutterPublic() {
+        updateGutter()
+        rehighlightNow()
     }
 
     private fun computeBracket() {
@@ -202,7 +235,7 @@ class CodeEditText @JvmOverloads constructor(
             )
             gutterPaint.color = gutterTextColor
             for (line in 0 until gl.lineCount) {
-                val baseline = gl.getLineBaseline(line) + gl.getLineTop(line) - scrollY + paddingTop
+                val baseline = gl.getLineBaseline(line) - scrollY + paddingTop
                 if (baseline > top + height + lineHeight()) break
                 if (baseline >= top - lineHeight()) {
                     val label = (line + 1).toString()
@@ -244,9 +277,8 @@ class CodeEditText @JvmOverloads constructor(
     private fun drawBracketRect(canvas: Canvas, gl: Layout, line: Int, offset: Int) {
         val top = gl.getLineTop(line) + paddingTop - scrollY
         val bottom = gl.getLineBottom(line) + paddingTop - scrollY
-        val padLeft = if (showLineNumbers) gutterWidth + 10 else 10
-        val startx = gl.getPrimaryHorizontal(offset) + padLeft - compoundPaddingLeft - scrollX
-        val endx = gl.getPrimaryHorizontal(minOf(offset + 1, gl.text.length)) + padLeft - compoundPaddingLeft - scrollX
+        val startx = gl.getPrimaryHorizontal(offset) - scrollX
+        val endx = gl.getPrimaryHorizontal(minOf(offset + 1, gl.text.length)) - scrollX
         if (bottom < 0 || top > height) return
         canvas.drawRect(startx, top.toFloat(), endx, bottom.toFloat(), bracketPaint)
     }

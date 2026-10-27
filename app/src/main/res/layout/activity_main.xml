@@ -125,6 +125,13 @@
                     android:imeOptions="actionSearch" />
 
                 <Button
+                    android:id="@+id/btn_find_prev"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/btn_find_prev" />
+
+                <Button
                     android:id="@+id/btn_find_next"
                     style="?attr/materialButtonOutlinedStyle"
                     android:layout_width="wrap_content"
@@ -193,6 +200,12 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/use_regex" />
+
+                <CheckBox
+                    android:id="@+id/cb_wrap_around"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/wrap_around" />
             </LinearLayout>
         </LinearLayout>
 

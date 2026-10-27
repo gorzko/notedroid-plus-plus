@@ -7,10 +7,9 @@ data class Document(
     val text: String,
     val language: com.notedroidplusplus.app.LanguageMode,
     val encoding: String = "UTF-8",
-    val lineEnding: String = "\\n",
+    val lineEnding: String = "\n",
     val modified: Boolean = false,
-    val readOnly: Boolean = false
+    val hasBom: Boolean = false
 ) {
-    val isNew: Boolean get() = uri == null
     val lineCount: Int get() = text.count { it == '\n' } + 1
 }

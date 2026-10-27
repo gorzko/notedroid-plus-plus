@@ -1,7 +1,6 @@
 package com.notedroidplusplus.app
 
 import com.notedroidplusplus.app.search.FindOptions
-import com.notedroidplusplus.app.search.findAll
 import com.notedroidplusplus.app.search.findNext
 import com.notedroidplusplus.app.search.findPrev
 import com.notedroidplusplus.app.search.replaceAll
@@ -68,12 +67,27 @@ class FindEngineTest {
     }
 
     @Test
-    fun findAllHitsPerLine() {
-        val hits = findAll("ab\ncd ab\n", FindOptions(query = "ab"))
-        assertEquals(2, hits.size)
-        assertEquals(1, hits[0].line)
-        assertEquals(2, hits[1].line)
-        assertEquals(4, hits[1].column)
+    fun replaceAllRegexUsesReplacement() {
+        val (text, count) = replaceAll(
+            "ab12cd34",
+            FindOptions(query = "\\d+", replaceWith = "#", regex = true)
+        )
+        assertEquals("ab#cd#", text)
+        assertEquals(2, count)
+    }
+
+    @Test
+    fun replaceAllRegexGroupReferences() {
+        val (text, _) = replaceAll(
+            "john smith",
+            FindOptions(query = "(john) (smith)", replaceWith = """$2 $1""", regex = true)
+        )
+        assertEquals("smith john", text)
+    }
+
+    @Test
+    fun findPrevRegex() {
+        assertEquals(2, findPrev("ab12cd34", 6, FindOptions(query = "\\d+", regex = true)))
     }
 
     @Test

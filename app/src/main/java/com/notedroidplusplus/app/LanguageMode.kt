@@ -60,6 +60,4 @@ enum class TokenKind {
     HEADING,
     LINK,
     ESCAPE;
-
-    val spanFlag: Int get() = 1 shl ordinal
 }

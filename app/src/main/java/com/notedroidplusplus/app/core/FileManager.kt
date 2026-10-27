@@ -17,23 +17,45 @@ class FileManager(private val io: FileIo) {
         fun displayName(uri: Uri): String
     }
 
-    data class LoadedFile(val text: String, val charset: Charset, val lineEnding: String)
+    data class LoadedFile(
+        val text: String,
+        val charset: Charset,
+        val lineEnding: String,
+        val hadBom: Boolean
+    )
 
     fun load(uri: Uri, forcedCharset: Charset? = null): LoadedFile {
         val bytes = io.readBytes(uri)
         val charset = forcedCharset ?: TextUtils.detect(bytes)
+        val hadBom = hasBom(bytes)
         val text = String(stripBom(bytes), charset)
-        return LoadedFile(text, charset, TextUtils.detectLineEnding(text))
+        return LoadedFile(text, charset, TextUtils.detectLineEnding(text), hadBom)
     }
 
-    fun save(uri: Uri, text: String, charset: Charset, lineEnding: String) {
+    fun save(uri: Uri, text: String, charset: Charset, lineEnding: String, writeBom: Boolean = false) {
         val normalized = TextUtils.convertLineEndings(text, lineEnding)
-        io.writeBytes(uri, normalized.toByteArray(charset))
+        val body = normalized.toByteArray(charset)
+        val bom = if (writeBom) bomFor(charset) else ByteArray(0)
+        io.writeBytes(uri, bom + body)
+    }
+
+    private fun bomFor(charset: Charset): ByteArray = when (charset.name()) {
+        "UTF-8" -> byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
+        "UTF-16LE", "UTF-16" -> byteArrayOf(0xFF.toByte(), 0xFE.toByte())
+        "UTF-16BE" -> byteArrayOf(0xFE.toByte(), 0xFF.toByte())
+        else -> ByteArray(0)
     }
 
     fun displayName(uri: Uri): String = io.displayName(uri)
 
     companion object {
+        fun hasBom(bytes: ByteArray): Boolean = when {
+            bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte() -> true
+            bytes.size >= 2 && bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte() -> true
+            bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte() -> true
+            else -> false
+        }
+
         fun stripBom(bytes: ByteArray): ByteArray = when {
             bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte() ->
                 bytes.copyOfRange(3, bytes.size)

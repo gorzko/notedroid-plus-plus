@@ -13,6 +13,7 @@ interface PluginHost {
     fun getText(): String
     fun setText(text: String)
     fun getSelection(): String
+    fun caret(): Int
     fun language(): LanguageMode
     fun showStatus(message: String)
 }

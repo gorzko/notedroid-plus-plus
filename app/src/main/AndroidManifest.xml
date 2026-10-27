@@ -42,6 +42,18 @@
             android:exported="false"
             android:label="@string/plugins_title"
             android:parentActivityName=".MainActivity" />
+
+        <activity
+            android:name=".plugins.PluginImportActivity"
+            android:exported="false"
+            android:label="@string/plugin_import"
+            android:parentActivityName=".MainActivity" />
+
+        <activity
+            android:name=".files.FindInFilesActivity"
+            android:exported="false"
+            android:label="@string/action_find_in_files"
+            android:parentActivityName=".MainActivity" />
     </application>
 
 </manifest>

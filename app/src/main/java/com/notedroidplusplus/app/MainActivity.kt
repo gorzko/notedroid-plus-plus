@@ -10,6 +10,8 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.ScaleGestureDetector
+import android.webkit.MimeTypeMap
 import android.widget.EditText
 import android.widget.PopupMenu
 import android.widget.Toast
@@ -20,11 +22,17 @@ import androidx.appcompat.app.AppCompatDelegate
 import com.google.android.material.tabs.TabLayout
 import com.notedroidplusplus.app.core.Document
 import com.notedroidplusplus.app.core.FileManager
+import com.notedroidplusplus.app.core.RecentFiles
+import com.notedroidplusplus.app.core.SessionStore
 import com.notedroidplusplus.app.core.TextUtils
 import com.notedroidplusplus.app.databinding.ActivityMainBinding
 import com.notedroidplusplus.app.editing.CodeEditText
+import com.notedroidplusplus.app.files.FindInFilesActivity
 import com.notedroidplusplus.app.plugins.PluginHost
+import com.notedroidplusplus.app.plugins.PluginImportActivity
 import com.notedroidplusplus.app.plugins.PluginRegistry
+import com.notedroidplusplus.app.search.SearchHit
+import com.notedroidplusplus.app.search.findAll
 import com.notedroidplusplus.app.preview.PreviewActivity
 import com.notedroidplusplus.app.search.FindOptions
 import com.notedroidplusplus.app.search.findNext
@@ -48,6 +56,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private lateinit var files: FileManager
     private lateinit var prefs: SharedPreferences
     private lateinit var pluginRegistry: PluginRegistry
+    private lateinit var recentFiles: RecentFiles
+    private lateinit var sessionStore: SessionStore
+    private var saveAsMime = "text/plain"
+    private var pendingSaveEncoding: String? = null
+    private var scaleDetector: ScaleGestureDetector? = null
 
     data class TabSession(
         var document: Document,
@@ -71,20 +84,61 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private val saveAsLauncher =
         registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
-            if (uri == null) {
+            val savedUri = uri
+            if (savedUri != null) {
+                val s = if (pendingCloseIndex >= 0) tabs.getOrNull(pendingCloseIndex) else activeSession()
+                if (s != null) {
+                    pendingSaveEncoding?.let { enc -> s.document = s.document.copy(encoding = enc) }
+                }
+            }
+            if (savedUri == null) {
                 if (pendingCloseIndex >= 0) pendingCloseIndex = -1
+                pendingSaveEncoding = null
                 return@registerForActivityResult
             }
             val index = pendingCloseIndex
             val session = if (index >= 0) tabs.getOrNull(index) else activeSession()
             if (session != null) {
-                val saved = saveSessionTo(session, uri)
+                val saved = saveSessionTo(session, savedUri)
                 if (index >= 0) {
                     if (saved) removeTab(index) else pendingCloseIndex = -1
                 }
             }
             pendingCloseIndex = -1
+            pendingSaveEncoding = null
         }
+
+    private val fifLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val data = result.data ?: return@registerForActivityResult
+            val uri = data.getStringExtra(FindInFilesActivity.EXTRA_OPEN_URI) ?: return@registerForActivityResult
+            val line = data.getIntExtra(FindInFilesActivity.EXTRA_OPEN_LINE, 1)
+            openUriAtLine(Uri.parse(uri), line)
+        }
+
+    private fun openUriAtLine(uri: Uri, line: Int) {
+        try {
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+            val loaded = files.load(uri)
+            val session = addTab(uri, loaded.text)
+            session.document = session.document.copy(
+                encoding = loaded.charset.name(),
+                lineEnding = loaded.lineEnding,
+                hasBom = loaded.hadBom
+            )
+            val offset = TextUtils.lineIndexToOffset(session.document.text, (line - 1).coerceAtLeast(0))
+            session.caret = offset
+            editor.setSelection(offset.coerceAtMost(session.document.text.length))
+            refreshTabLabels()
+            updateStatus()
+        } catch (e: Exception) {
+            Toast.makeText(this, getString(R.string.error_load_failed, e.message), Toast.LENGTH_LONG).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,6 +149,26 @@ class MainActivity : AppCompatActivity(), PluginHost {
         files = FileManager(FileManager.defaultIo(this))
         prefs = getSharedPreferences("notedroid_settings", MODE_PRIVATE)
         pluginRegistry = PluginRegistry(this)
+        recentFiles = RecentFiles(this)
+        sessionStore = SessionStore(this)
+        scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val size = editor.textSize / resources.displayMetrics.scaledDensity
+                val newSize = (size * detector.scaleFactor).coerceIn(8f, 40f)
+                if (kotlin.math.abs(newSize - size) >= 0.5f) {
+                    editor.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, newSize)
+                    prefs.edit().putInt("font_size", newSize.toInt()).apply()
+                    editor.updateGutterPublic()
+                    editor.rehighlight()
+                }
+                return true
+            }
+        })
+        editor.setOnTouchListener { v, event ->
+            scaleDetector?.onTouchEvent(event)
+            v.performClick()
+            false
+        }
 
         applyPersistedSettings()
 
@@ -103,6 +177,13 @@ class MainActivity : AppCompatActivity(), PluginHost {
             override fun onTabUnselected(tab: TabLayout.Tab) { syncActiveDocument() }
             override fun onTabReselected(tab: TabLayout.Tab) {}
         })
+        binding.tabLayout.setOnLongClickListener {
+            showTabCloseMenu()
+            true
+        }
+        for (child in binding.tabLayout.touchables) {
+            child.setOnLongClickListener { showTabCloseMenu(); true }
+        }
 
         binding.btnNew.setOnClickListener { addTab(null, null) }
         binding.btnOpen.setOnClickListener { openLauncher.launch(arrayOf("text/*", "application/json", "application/xml")) }
@@ -133,12 +214,77 @@ class MainActivity : AppCompatActivity(), PluginHost {
         if (savedInstanceState != null) {
             restoreState(savedInstanceState)
         } else {
-            addTab(null, null)
             val intentUri = intent?.data
-            if (intentUri != null) openUri(intentUri)
+            if (intentUri != null) {
+                addTab(null, null)
+                openUri(intentUri)
+            } else {
+                offerRestoreSession()
+            }
         }
         updateStatus()
     }
+
+    private fun offerRestoreSession() {
+        val saved = sessionStore.load()
+        if (!saved.isNullOrEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.restore_session_title)
+                .setMessage(getString(R.string.restore_session_msg, saved.size))
+                .setPositiveButton(R.string.yes) { _, _ -> restoreSession(saved) }
+                .setNegativeButton(R.string.no) { _, _ -> { sessionStore.clear(); addTab(null, null) } }
+                .setCancelable(false)
+                .show()
+        } else {
+            addTab(null, null)
+        }
+    }
+
+    private fun restoreSession(saved: List<SessionStore.TabState>) {
+        saved.forEachIndexed { i, st ->
+            val session = addTab(st.uri?.let { Uri.parse(it) }, st.text, name = st.name)
+            session.document = session.document.copy(
+                language = st.language,
+                encoding = st.encoding,
+                lineEnding = st.lineEnding,
+                modified = st.modified
+            )
+            session.caret = st.caret
+        }
+        activateTab(0)
+        refreshTabLabels()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        saveSessionSnapshot()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        saveSessionSnapshot()
+    }
+
+    private fun saveSessionSnapshot() {
+        if (tabs.isEmpty()) return
+        syncActiveDocument()
+        activeSession()?.let { it.caret = editor.selectionStart }
+        val hasContent = tabs.any { it.document.text.isNotEmpty() }
+        if (!hasContent) return
+        sessionStore.save(tabs.map { s ->
+            SessionStore.TabState(
+                s.document.uri,
+                s.document.fileName,
+                s.document.text,
+                s.document.language,
+                s.document.encoding,
+                s.document.lineEnding,
+                s.document.modified,
+                s.caret
+            )
+        })
+    }
+
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -209,6 +355,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
     override fun getSelection(): String =
         editor.text?.substring(editor.selectionStart.coerceAtMost(editor.selectionEnd), editor.selectionEnd.coerceAtLeast(editor.selectionStart)).orEmpty()
 
+    override fun caret(): Int = editor.selectionStart.coerceAtLeast(0)
+
     override fun language(): LanguageMode = activeSession()?.document?.language ?: LanguageMode.NORMAL_TEXT
 
     override fun showStatus(message: String) {
@@ -263,7 +411,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
             text = initialText ?: "",
             language = if (uri != null || name != null) LanguageMode.fromFileName(fileName) else LanguageMode.NORMAL_TEXT
         )
-        val tab = binding.tabLayout.newTab().setText(doc.fileName)
+        val tab = binding.tabLayout.newTab()
+        tab.setCustomView(R.layout.tab_item)
+        val label = tab.customView?.findViewById<android.widget.TextView>(R.id.tab_label)
+        val closeBtn = tab.customView?.findViewById<android.widget.ImageView>(R.id.tab_close)
+        label?.text = doc.fileName
+        val tabIndex = tabs.size
+        closeBtn?.setOnClickListener {
+            val idx = tabs.indexOfFirst { it.tab === tab }
+            if (idx >= 0) closeTabAt(idx)
+        }
         binding.tabLayout.addTab(tab)
         val session = TabSession(doc, tab)
         tabs.add(session)
@@ -285,6 +442,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 lineEnding = loaded.lineEnding,
                 hasBom = loaded.hadBom
             )
+            recentFiles.add(uri.toString(), session.document.fileName)
             refreshTabLabels()
             updateStatus()
         } catch (e: Exception) {
@@ -329,7 +487,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun refreshTabLabels() {
         tabs.forEach { s ->
-            s.tab?.text = if (s.document.modified) "● ${s.document.fileName}" else s.document.fileName
+            val label = s.tab?.customView?.findViewById<android.widget.TextView>(R.id.tab_label)
+            label?.text = if (s.document.modified) "● ${s.document.fileName}" else s.document.fileName
         }
     }
 
@@ -360,9 +519,32 @@ class MainActivity : AppCompatActivity(), PluginHost {
         if (uri != null) {
             saveSessionTo(s, Uri.parse(uri))
         } else {
-            pendingCloseIndex = -1
-            saveAsLauncher.launch(s.document.fileName)
+            saveAsWithEncoding(s)
         }
+    }
+
+    private fun mimeFor(fileName: String): String {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+        return when {
+            mime != null && mime.startsWith("text/") -> mime
+            ext == "json" -> "application/json"
+            ext == "xml" || ext == "svg" -> "application/xml"
+            else -> "text/plain"
+        }
+    }
+
+    private fun saveAsWithEncoding(s: TabSession) {
+        val encodings = TextUtils.names()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.encoding_title)
+            .setItems(encodings.toTypedArray()) { _, which ->
+                pendingSaveEncoding = encodings[which]
+                pendingCloseIndex = -1
+                saveAsLauncher.launch(s.document.fileName)
+            }
+            .setNegativeButton(R.string.cancel) { _, _ -> pendingSaveEncoding = null }
+            .show()
     }
 
     private fun saveSessionTo(s: TabSession, uri: Uri): Boolean {
@@ -384,6 +566,48 @@ class MainActivity : AppCompatActivity(), PluginHost {
         } catch (e: Exception) {
             Toast.makeText(this, getString(R.string.error_save_failed, e.message), Toast.LENGTH_LONG).show()
             false
+        }
+    }
+
+    private fun closeTabAt(index: Int) {
+        val s = tabs.getOrNull(index) ?: return
+        if (!s.document.modified) {
+            removeTab(index)
+            return
+        }
+        val prevActive = active
+        AlertDialog.Builder(this)
+            .setTitle(R.string.confirm_save_title)
+            .setMessage(getString(R.string.confirm_save_msg, s.document.fileName))
+            .setPositiveButton(R.string.yes) { _, _ ->
+                if (s.document.uri != null) {
+                    if (saveSessionTo(s, Uri.parse(s.document.uri))) removeTab(index)
+                } else {
+                    pendingCloseIndex = index
+                    saveAsLauncher.launch(s.document.fileName)
+                }
+            }
+            .setNegativeButton(R.string.no) { _, _ -> removeTab(index) }
+            .setNeutralButton(R.string.cancel) { _, _ -> activateTab(prevActive) }
+            .show()
+    }
+
+    private fun showTabCloseMenu() {
+        popup {
+            item(getString(R.string.action_close)) { closeTabAt(active) }
+            item(getString(R.string.action_close_others)) {
+                val keep = active
+                tabs.indices.filterNot { it == keep }.reversed().forEach { idx ->
+                    if (!tabs[idx].document.modified) removeTab(idx)
+                }
+                activateTab(0.coerceAtMost(tabs.size - 1))
+            }
+            item(getString(R.string.action_close_all)) {
+                tabs.indices.reversed().forEach { idx ->
+                    if (!tabs[idx].document.modified) removeTab(idx)
+                }
+                if (tabs.isEmpty()) addTab(null, null)
+            }
         }
     }
 
@@ -656,8 +880,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun showFileMenu() = popup {
         item(getString(R.string.action_new)) { addTab(null, null) }
         item(getString(R.string.action_open)) { openLauncher.launch(arrayOf("text/*")) }
+        item(getString(R.string.open_recent)) { showRecentMenu() }
         item(getString(R.string.action_save)) { saveActive() }
-        item(getString(R.string.action_save_as)) { activeSession()?.let { pendingCloseIndex = -1; saveAsLauncher.launch(it.document.fileName) } }
+        item(getString(R.string.action_save_as)) { activeSession()?.let { saveAsWithEncoding(it) } }
         item(getString(R.string.action_close)) { closeActive() }
         item(getString(R.string.action_exit)) { finish() }
     }
@@ -691,6 +916,44 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.action_find)) { toggleFindPanel(false) }
         item(getString(R.string.action_replace)) { toggleFindPanel(true) }
         item(getString(R.string.action_goto)) { gotoLine() }
+        item(getString(R.string.action_find_in_files)) {
+            refreshFindOptions()
+            fifLauncher.launch(
+                Intent(this, FindInFilesActivity::class.java)
+                    .putExtra(FindInFilesActivity.EXTRA_QUERY, binding.findInput.text.toString())
+            )
+        }
+    }
+
+    private fun showRecentMenu() {
+        val recents = recentFiles.list()
+        if (recents.isEmpty()) {
+            Toast.makeText(this, R.string.no_recent_files, Toast.LENGTH_SHORT).show()
+            return
+        }
+        popup {
+            recents.forEach { entry ->
+                item(entry.name) { openRecent(entry.uri) }
+            }
+        }
+    }
+
+    private fun openRecent(uriString: String) {
+        val uri = Uri.parse(uriString)
+        try {
+            val loaded = files.load(uri)
+            val session = addTab(uri, loaded.text)
+            session.document = session.document.copy(
+                encoding = loaded.charset.name(),
+                lineEnding = loaded.lineEnding,
+                hasBom = loaded.hadBom
+            )
+            refreshTabLabels()
+            updateStatus()
+        } catch (e: Exception) {
+            recentFiles.remove(uriString)
+            Toast.makeText(this, getString(R.string.recent_file_gone, e.message), Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun showViewMenu() = popup {
@@ -731,10 +994,24 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun showToolsMenu() = popup {
         item(getString(R.string.action_prettify)) { prettify() }
         item(getString(R.string.action_minify)) { minify() }
+        item(getString(R.string.action_validate_xml)) { validateXml() }
         item(getString(R.string.action_preview)) { preview() }
     }
 
+    private fun validateXml() {
+        val s = activeSession() ?: return
+        if (s.document.language != LanguageMode.XML) {
+            Toast.makeText(this, R.string.tool_json_xml_only, Toast.LENGTH_SHORT).show()
+            return
+        }
+        XmlTool.validate(editor.text?.toString() ?: "")
+            .onSuccess { Toast.makeText(this, R.string.xml_valid, Toast.LENGTH_SHORT).show() }
+            .onFailure { Toast.makeText(this, getString(R.string.xml_invalid, it.message), Toast.LENGTH_LONG).show() }
+    }
+
     private fun showPluginsMenu() = popup {
+        item(getString(R.string.plugin_import)) { PluginImportActivity.start(this) }
+        menu.add(getString(R.string.plugin_builtins)).isEnabled = false
         pluginRegistry.discover().forEachIndexed { pi, plugin ->
             menu.add(plugin.name).isEnabled = false
             plugin.commands.forEachIndexed { ci, cmd ->

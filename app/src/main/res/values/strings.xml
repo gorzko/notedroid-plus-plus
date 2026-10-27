@@ -77,5 +77,21 @@
     <string name="tool_json_xml_only">Prettify/Minify applies to JSON and XML files</string>
     <string name="tool_preview_only">Preview supports Markdown and HTML</string>
     <string name="action_zoom_in">Zoom In</string>
+    <string name="action_find_in_files">Find in Files…</string>
+    <string name="open_recent">Recent files</string>
+    <string name="no_recent_files">No recent files yet</string>
+    <string name="recent_file_gone">File no longer available: %1$s</string>
+    <string name="action_close_others">Close Others</string>
+    <string name="action_close_all">Close All</string>
+    <string name="action_validate_xml">Validate XML</string>
+    <string name="xml_valid">XML is well-formed</string>
+    <string name="xml_invalid">Invalid XML: %1$s</string>
+    <string name="plugin_import">Import plugin pack…</string>
+    <string name="plugin_imported">Plugin pack imported</string>
+    <string name="plugin_import_failed">Could not import plugin pack</string>
+    <string name="plugin_builtins">Commands</string>
+    <string name="restore_session_title">Restore session?</string>
+    <string name="restore_session_msg">Restore %1$d previously open tab(s)?</string>
+    <string name="encoding_title">Choose encoding</string>
     <string name="action_zoom_out">Zoom Out</string>
 </resources>

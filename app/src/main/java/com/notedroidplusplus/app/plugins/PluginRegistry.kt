@@ -9,11 +9,25 @@ import android.content.Context
  */
 class PluginRegistry(private val context: Context) {
 
-    fun discover(): List<PluginDescriptor> = builtIns().map { it.descriptor }
+    fun discover(): List<PluginDescriptor> =
+        builtIns().map { it.descriptor } + packDescriptors()
 
     fun builtIns(): List<NoteDroidPlugin> = listOf(
         Base64Plugin(),
         LoremIpsumPlugin(),
         WordCountPlugin()
     )
+
+    fun packs(): List<PluginPacks.Pack> = PluginPacks.list(context)
+
+    fun packDescriptors(): List<PluginDescriptor> =
+        packs().map { pack ->
+            PluginDescriptor(
+                name = pack.name,
+                description = pack.description,
+                commands = pack.commands.map { cmd ->
+                    PluginCommand(cmd.id, cmd.label) { host -> PluginPacks.run(cmd, host) }
+                }
+            )
+        }
 }

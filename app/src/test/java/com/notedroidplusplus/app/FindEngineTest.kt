@@ -2,6 +2,7 @@ package com.notedroidplusplus.app
 
 import com.notedroidplusplus.app.search.FindOptions
 import com.notedroidplusplus.app.search.findNext
+import com.notedroidplusplus.app.search.findAll
 import com.notedroidplusplus.app.search.findPrev
 import com.notedroidplusplus.app.search.replaceAll
 import org.junit.Assert.assertEquals
@@ -88,6 +89,23 @@ class FindEngineTest {
     @Test
     fun findPrevRegex() {
         assertEquals(2, findPrev("ab12cd34", 6, FindOptions(query = "\\d+", regex = true)))
+    }
+
+    @Test
+    fun findAllHitsPerLine() {
+        val hits = findAll("ab\ncd ab\n", FindOptions(query = "ab"), file = "f.txt")
+        assertEquals(2, hits.size)
+        assertEquals(1, hits[0].line)
+        assertEquals(1, hits[0].column)
+        assertEquals(2, hits[1].line)
+        assertEquals(4, hits[1].column)
+        assertEquals("f.txt", hits[0].file)
+    }
+
+    @Test
+    fun findAllWholeWordAndRegex() {
+        assertEquals(1, findAll("cat catalog", FindOptions(query = "cat", wholeWord = true)).size)
+        assertEquals(1, findAll("ab12cd", FindOptions(query = "\\d+", regex = true)).size)
     }
 
     @Test

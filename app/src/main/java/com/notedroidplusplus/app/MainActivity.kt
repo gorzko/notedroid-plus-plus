@@ -183,6 +183,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
         )
         editor.showLineNumbers = prefs.getBoolean("show_line_numbers", true)
+        editor.setHorizontallyScrolling(!prefs.getBoolean("wrap_lines", false))
         val fontSize = prefs.getInt("font_size", 14)
         editor.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat().coerceIn(8f, 40f))
     }
@@ -190,6 +191,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     override fun onResume() {
         super.onResume()
         editor.showLineNumbers = prefs.getBoolean("show_line_numbers", true)
+        editor.setHorizontallyScrolling(!prefs.getBoolean("wrap_lines", false))
         val fontSize = prefs.getInt("font_size", 14)
         editor.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat().coerceIn(8f, 40f))
         editor.applyTheme(resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
@@ -694,11 +696,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun showViewMenu() = popup {
         item(getString(R.string.theme_light)) { setDarkTheme(false) }
         item(getString(R.string.theme_dark)) { setDarkTheme(true) }
-        item(getString(R.string.wrap_lines)) { editor.setHorizontallyScrolling(false) }
-        item(getString(R.string.no_wrap_lines)) { editor.setHorizontallyScrolling(true) }
+        item(getString(R.string.wrap_lines)) { setWrap(true) }
+        item(getString(R.string.no_wrap_lines)) { setWrap(false) }
         item(getString(R.string.show_line_numbers)) { editor.showLineNumbers = !editor.showLineNumbers }
         item(getString(R.string.action_zoom_in)) { zoom(1.25f) }
         item(getString(R.string.action_zoom_out)) { zoom(0.8f) }
+    }
+
+    private fun setWrap(wrap: Boolean) {
+        prefs.edit().putBoolean("wrap_lines", wrap).apply()
+        editor.setHorizontallyScrolling(!wrap)
     }
 
     private fun setDarkTheme(dark: Boolean) {

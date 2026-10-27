@@ -46,7 +46,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.markwon.core)
+    implementation("androidx.preference:preference-ktx:1.2.1")
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

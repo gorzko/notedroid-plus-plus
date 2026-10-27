@@ -15,13 +15,17 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Build and test
+      - name: Install Gradle 8.7
         run: |
-          chmod +x gradlew
+          curl -sL https://services.gradle.org/distributions/gradle-8.7-bin.zip -o /tmp/gradle.zip
+          sudo unzip -q /tmp/gradle.zip -d /opt
+          echo "/opt/gradle-8.7/bin" >> $GITHUB_PATH
+      - name: Generate wrapper and build
+        run: |
+          gradle wrapper --gradle-version 8.7 --distribution-type bin
           ./gradlew --no-daemon assembleDebug testDebugUnitTest
       - name: Upload APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk

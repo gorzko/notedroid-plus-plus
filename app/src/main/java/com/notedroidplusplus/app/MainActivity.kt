@@ -12,8 +12,6 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.tabs.TabLayout
 import com.notedroidplusplus.app.core.Document
 import com.notedroidplusplus.app.core.FileManager
@@ -22,7 +20,6 @@ import com.notedroidplusplus.app.databinding.ActivityMainBinding
 import com.notedroidplusplus.app.editing.CodeEditText
 import com.notedroidplusplus.app.preview.PreviewActivity
 import com.notedroidplusplus.app.search.FindOptions
-import com.notedroidplusplus.app.search.findAll
 import com.notedroidplusplus.app.search.findNext
 import com.notedroidplusplus.app.search.replaceAll
 import com.notedroidplusplus.app.settings.SettingsActivity
@@ -32,9 +29,13 @@ import java.nio.charset.Charset
 
 class MainActivity : AppCompatActivity() {
 
+    companion object { private const val MAX_UNDO = 200 }
+
     private lateinit var binding: ActivityMainBinding
     private lateinit var editor: CodeEditText
     private val tabs = mutableListOf<TabSession>()
+    private val undoStack = ArrayDeque<String>()
+    private val redoStack = ArrayDeque<String>()
     private var active = -1
     private var newCounter = 1
     private var findOptions = FindOptions()
@@ -65,7 +66,7 @@ class MainActivity : AppCompatActivity() {
         editor = binding.editor
         files = FileManager(FileManager.defaultIo(this))
 
-        if (newTab() == 1 && tabs.isEmpty()) addTab(null, null)
+        if (tabs.isEmpty()) addTab(null, null)
 
         binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab) { activateTab(tab.position) }
@@ -87,19 +88,12 @@ class MainActivity : AppCompatActivity() {
         binding.cbWholeWord.setOnCheckedChangeListener { _, _ -> refreshFindOptions() }
         binding.cbRegex.setOnCheckedChangeListener { _, _ -> refreshFindOptions() }
 
-        editor.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun afterTextChanged(s: android.text.Editable?) { onTextChanged() }
-        })
-        editor.setOnSelectionChangeListener { updateStatus() }
+        editor.onSelectionChange = { updateStatus() }
 
         val intentUri = intent?.data
         if (intentUri != null) openUri(intentUri)
         else updateStatus()
     }
-
-    private fun newTab(): Int = 0
 
     private fun activeSession(): TabSession? = tabs.getOrNull(active)
 
@@ -143,17 +137,47 @@ class MainActivity : AppCompatActivity() {
         editor.setText(s.document.text)
         editor.language = s.document.language
         editor.setSelection(s.document.text.length)
-        editor.addTextChangedListener(textListener())
+        editor.addTextChangedListener(tw)
         refreshTabLabels()
         updateStatus()
     }
 
-    private fun textListener(): android.text.TextWatcher = tw
-
     private val tw = object : android.text.TextWatcher {
-        override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        private var last: String = ""
+        override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) { last = s?.toString() ?: "" }
         override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-        override fun afterTextChanged(s: android.text.Editable?) { onTextChanged() }
+        override fun afterTextChanged(s: android.text.Editable?) {
+            if (last != s?.toString() && ::editor.isInitialized) {
+                if (last.length <= MAX_UNDO && s != null) {
+                    undoStack.addLast(last)
+                    if (undoStack.size > MAX_UNDO) undoStack.removeFirst()
+                    redoStack.clear()
+                }
+            }
+            onTextChanged()
+        }
+    }
+
+    private fun performUndo() {
+        if (undoStack.isEmpty()) return
+        val prev = undoStack.removeLast()
+        redoStack.addLast(editor.text.toString())
+        editor.removeTextChangedListener(tw)
+        editor.setText(prev)
+        editor.setSelection(prev.length)
+        editor.addTextChangedListener(tw)
+        onTextChanged()
+    }
+
+    private fun performRedo() {
+        if (redoStack.isEmpty()) return
+        val next = redoStack.removeLast()
+        undoStack.addLast(editor.text.toString())
+        editor.removeTextChangedListener(tw)
+        editor.setText(next)
+        editor.setSelection(next.length)
+        editor.addTextChangedListener(tw)
+        onTextChanged()
     }
 
     private fun syncActiveDocument() {
@@ -454,8 +478,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showEditMenu() = popup {
-        item(getString(R.string.action_undo)) { editor.undo() }
-        item(getString(R.string.action_redo)) { editor.redo() }
+        item(getString(R.string.action_undo)) { performUndo() }
+        item(getString(R.string.action_redo)) { performRedo() }
         item(getString(R.string.action_cut)) { editor.cut() }
         item(getString(R.string.action_copy)) { editor.copy() }
         item(getString(R.string.action_paste)) { editor.paste() }

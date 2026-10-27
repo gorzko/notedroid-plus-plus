@@ -38,6 +38,8 @@ class CodeEditText @JvmOverloads constructor(
     var darkTheme: Boolean = false
         private set
 
+    var onSelectionChange: (() -> Unit)? = null
+
     private val gutterPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val gutterBgPaint = Paint()
     private val highlightPaint = Paint()
@@ -184,6 +186,7 @@ class CodeEditText @JvmOverloads constructor(
     override fun onSelectionChanged(selStart: Int, selEnd: Int) {
         super.onSelectionChanged(selStart, selEnd)
         computeBracket()
+        onSelectionChange?.invoke()
         invalidate()
     }
 

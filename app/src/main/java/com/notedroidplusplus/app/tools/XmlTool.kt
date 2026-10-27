@@ -29,12 +29,27 @@ object XmlTool {
         dbf.isNamespaceAware = true
         dbf.isXIncludeAware = false
         dbf.isExpandEntityReferences = false
-        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-        dbf.setFeature("http://xml.org/sax/features/external-general-entities", false)
-        dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-        dbf.setFeature("http://xml.org/sax/features/external-dtd", false)
-        dbf.setFeature("http://xml.org/sax/features/validation", false)
+        // Hardening: tolerate factories that do not support a given feature,
+        // but require the critical DOCTYPE ban on factories that do.
+        trySetFeature(dbf, "http://apache.org/xml/features/disallow-doctype-decl", true, required = true)
+        trySetFeature(dbf, "http://xml.org/sax/features/external-general-entities", false)
+        trySetFeature(dbf, "http://xml.org/sax/features/external-parameter-entities", false)
+        trySetFeature(dbf, "http://xml.org/sax/features/external-dtd", false)
+        trySetFeature(dbf, "http://xml.org/sax/features/validation", false)
         return dbf.newDocumentBuilder().parse(input.byteInputStream())
+    }
+
+    private fun trySetFeature(
+        dbf: javax.xml.parsers.DocumentBuilderFactory,
+        name: String,
+        value: Boolean,
+        required: Boolean = false
+    ) {
+        try {
+            dbf.setFeature(name, value)
+        } catch (_: Exception) {
+            if (required) throw IllegalStateException("XML hardening feature unavailable: $name")
+        }
     }
 
     private fun newTransformer(indent: Int): javax.xml.transform.Transformer {

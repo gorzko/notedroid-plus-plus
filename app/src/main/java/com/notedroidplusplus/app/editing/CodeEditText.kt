@@ -13,7 +13,6 @@ import androidx.appcompat.widget.AppCompatEditText
 import com.notedroidplusplus.app.LanguageMode
 import com.notedroidplusplus.app.TokenKind
 import com.notedroidplusplus.app.settings.EditorTheme
-import com.notedroidplusplus.app.settings.ThemeRegistry
 
 /**
  * Editor view with Notepad++-style features: gutter with line numbers, syntax
@@ -71,10 +70,6 @@ class CodeEditText @JvmOverloads constructor(
         })
         viewTreeObserver.addOnScrollChangedListener { invalidate() }
         post { updateGutter() }
-    }
-
-    fun applyTheme(dark: Boolean) {
-        applyEditorTheme(if (dark) ThemeRegistry.byName("Bespoke") else ThemeRegistry.DEFAULT)
     }
 
     fun applyEditorTheme(theme: EditorTheme) {

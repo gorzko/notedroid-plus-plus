@@ -24,7 +24,7 @@ object ContentSniffer {
                 cmd.contains("bash") || cmd.contains("zsh") || cmd.contains("ksh") ||
                     cmd.contains("sh") || cmd.contains("dash") -> LanguageMode.SHELL
                 cmd.contains("python") -> LanguageMode.PYTHON
-                cmd.contains("perl") -> LanguageMode.PYTHON
+                cmd.contains("perl") -> LanguageMode.NORMAL_TEXT
                 cmd.contains("node") || cmd.contains("bun") || cmd.contains("deno") -> LanguageMode.JAVASCRIPT
                 cmd.contains("ruby") -> LanguageMode.RUBY
                 cmd.contains("lua") -> LanguageMode.LUA
@@ -34,7 +34,7 @@ object ContentSniffer {
         }
 
         if (first.startsWith("<?xml", ignoreCase = true)) {
-            return detectXmlDialect(head)
+            return LanguageMode.XML
         }
         if (first.startsWith("<!DOCTYPE html", ignoreCase = true) ||
             (first.startsWith("<") && head.contains("<html", ignoreCase = true))
@@ -92,14 +92,6 @@ object ContentSniffer {
         }
         if (base == "makefile" || base == "gnumakefile") return LanguageMode.MAKEFILE
         return detect(content)
-    }
-
-    private fun detectXmlDialect(head: String): LanguageMode {
-        val lower = head.lowercase()
-        return when {
-            lower.contains("<svg") -> LanguageMode.XML
-            else -> LanguageMode.XML
-        }
     }
 
     private fun looksLikeJson(head: String): Boolean {

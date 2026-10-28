@@ -66,6 +66,16 @@ icon, dark theme, back/forward gesture support).
   scroll beyond last line, INS/OVR overwrite mode in the status bar
 - Auto-completion: word/keyword popup and matched-pair auto-insert
 - View > Summary dialog and Restore Default Zoom
+- Search: Count, Find All in Current/All Opened Documents, Mark All +
+  Clear All Marks, Extended (\n \t \xNN) search mode, ". matches newline"
+- Bookmarks: toggle/next/previous/clear/invert + cut/copy/paste bookmarked
+  lines, gutter circle markers, persisted across rotation and process death
+- View > Show Symbol: space/tab, EOL, non-printing, control chars, indent
+  guide, wrap symbol, show-all master toggle
+- View: full-screen + distraction-free modes, per-tab RTL/LTR text direction
+- Settings sections: New Document defaults, Indentation, Searching
+  (auto-fill), Backup (session snapshot + periodic dirty-buffer backup),
+  Performance (highlight threshold)
 
 **New built-in features**
 - **In-tab preview** for Markdown and HTML: a document view mode toggled from

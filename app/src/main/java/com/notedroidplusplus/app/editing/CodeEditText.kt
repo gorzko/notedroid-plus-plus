@@ -125,6 +125,28 @@ class CodeEditText @JvmOverloads constructor(
             field = value
             invalidate()
         }
+
+    // ---- Change History margin (#58) ----
+    /** Line index -> state, maintained by MainActivity from edit/save/undo events. */
+    var changeHistory: Map<Int, com.notedroidplusplus.app.core.ChangeHistory.LineState> = emptyMap()
+        set(value) {
+            field = value
+            invalidate()
+        }
+    var showChangeHistoryMargin: Boolean = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+    var showChangeHistoryInText: Boolean = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+    private var changeModifiedUnsavedColor = 0xFFFF9966.toInt()
+    private var changeModifiedSavedColor = 0xFF66CC66.toInt()
+    private var changeRevertModifiedColor = 0xFF99CC99.toInt()
+    private var changeRevertOriginalColor = 0xFF99CCFF.toInt()
     var edgeBackgroundMode: Boolean = false
         set(value) {
             field = value
@@ -320,6 +342,10 @@ class CodeEditText @JvmOverloads constructor(
         gutterBgColor = theme.gutterBg
         highlightColor = theme.currentLine
         bracketColor = theme.bracket
+        changeModifiedUnsavedColor = theme.changeModifiedUnsaved
+        changeModifiedSavedColor = theme.changeModifiedSaved
+        changeRevertModifiedColor = theme.changeRevertModified
+        changeRevertOriginalColor = theme.changeRevertOriginal
         setBackgroundColor(theme.editorBg)
         setTextColor(theme.editorText)
         gutterPaint.textSize = paint.textSize * 0.85f
@@ -498,6 +524,7 @@ class CodeEditText @JvmOverloads constructor(
         drawVerticalEdge(canvas)
         drawShowSymbol(canvas, gl)
         drawBookmarks(canvas, gl)
+        drawChangeHistory(canvas, gl)
 
         val sel = selectionStart
         if (sel >= 0 && currentLineStyle != "none") {
@@ -529,6 +556,38 @@ class CodeEditText @JvmOverloads constructor(
         }
 
         super.onDraw(canvas)
+    }
+
+    /** Draws the Change History margin column and optional in-text line backgrounds. */
+    private fun drawChangeHistory(canvas: Canvas, gl: Layout) {
+        if (changeHistory.isEmpty()) return
+        if (!showChangeHistoryMargin && !showChangeHistoryInText) return
+        val top = scrollY
+        for (line in 0 until gl.lineCount) {
+            val state = changeHistory[line] ?: continue
+            val color = when (state) {
+                com.notedroidplusplus.app.core.ChangeHistory.LineState.MODIFIED_UNSAVED -> changeModifiedUnsavedColor
+                com.notedroidplusplus.app.core.ChangeHistory.LineState.MODIFIED_SAVED -> changeModifiedSavedColor
+                com.notedroidplusplus.app.core.ChangeHistory.LineState.REVERT_MODIFIED -> changeRevertModifiedColor
+                com.notedroidplusplus.app.core.ChangeHistory.LineState.REVERT_ORIGINAL -> changeRevertOriginalColor
+                com.notedroidplusplus.app.core.ChangeHistory.LineState.NONE -> continue
+            }
+            val baseline = gl.getLineBaseline(line) - scrollY + paddingTop
+            if (baseline > top + height + lineHeight() || baseline < top - lineHeight()) continue
+            val rectTop = (gl.getLineTop(line) + paddingTop - scrollY).toFloat()
+            val rectBottom = (gl.getLineBottom(line) + paddingTop - scrollY).toFloat()
+            val paint = Paint().apply { this.color = color }
+            if (showChangeHistoryInText) {
+                canvas.drawRect(scrollX.toFloat(), rectTop, (scrollX + width).toFloat(), rectBottom, paint)
+            }
+            if (showChangeHistoryMargin) {
+                // strip in the gutter, left of the line numbers
+                canvas.drawRect(
+                    scrollX.toFloat(), rectTop, (scrollX + (gutterWidth * 0.28f)).coerceAtLeast(3f),
+                    rectBottom, paint
+                )
+            }
+        }
     }
 
     /** Draws an extra caret-width bar (Notepad++ caret width 1-3 px) at the caret column. */

@@ -42,6 +42,7 @@ import com.notedroidplusplus.app.core.MacroStore
 import com.notedroidplusplus.app.core.SaveAsCoordinator
 import com.notedroidplusplus.app.core.WindowSort
 import com.notedroidplusplus.app.core.SessionStore
+import com.notedroidplusplus.app.core.ChangeHistory
 import com.notedroidplusplus.app.core.TextUtils
 import com.notedroidplusplus.app.databinding.ActivityMainBinding
 import com.notedroidplusplus.app.editing.CodeEditText
@@ -100,7 +101,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
         var lastModifiedAt: Long = 0L,
         var monitoring: Boolean = false,
         var bookmarks: Set<Int> = emptySet(),
-        var textDirectionRtl: Boolean = false
+        var textDirectionRtl: Boolean = false,
+        val changeHistory: ChangeHistory = ChangeHistory(),
+        var baselineText: String = ""
     )
 
     private val tabs = mutableListOf<TabSession>()
@@ -499,6 +502,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
         startPeriodicBackup()
         editor.edgeBackgroundMode = prefs.getBoolean("edge_background_mode", false)
         editor.edgeColumns = EdgeColumns.parse(prefs.getString("edge_columns", null))
+        editor.showChangeHistoryMargin = prefs.getBoolean("change_history_margin", true)
+        editor.showChangeHistoryInText = prefs.getBoolean("change_history_in_text", false)
     }
 
     override fun onResume() {
@@ -579,6 +584,10 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
         override fun onTextChanged(s: CharSequence?, start: Int, beforeCount: Int, count: Int) {
             val sess = activeSession() ?: return
+            val afterText = s?.toString() ?: ""
+            if (afterText != sess.document.text) {
+                sess.changeHistory.recordEdit(afterText, start, beforeCount, count)
+            }
             val removed = if (beforeCount > 0) pendingRemoved.takeIf { it != null } ?: "" else ""
             val inserted = if (count > 0) s?.subSequence(start, start + count)?.toString() ?: "" else ""
             when {
@@ -647,6 +656,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         }
         binding.tabLayout.addTab(tab)
         val session = TabSession(doc, tab)
+        session.baselineText = doc.text
         tabs.add(session)
         activateTab(tabs.size - 1)
         return session
@@ -696,6 +706,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 modified = false
             )
             current.readOnly = false
+            current.changeHistory.reset()
+            current.baselineText = loaded.text
+            editor.changeHistory = emptyMap()
             editor.filters = emptyArray()
             editor.removeTextChangedListener(tw)
             editor.setText(loaded.text)
@@ -730,6 +743,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.setSelection(s.caret.coerceIn(0, s.document.text.length))
         editor.addTextChangedListener(tw)
         editor.bookmarks = s.bookmarks
+        editor.changeHistory = s.changeHistory.markedLines()
         editor.textDirection = if (s.textDirectionRtl) android.view.View.TEXT_DIRECTION_ANY_RTL
         else android.view.View.TEXT_DIRECTION_LTR
         editor.layoutDirection = if (s.textDirectionRtl) android.view.View.LAYOUT_DIRECTION_RTL else android.view.View.LAYOUT_DIRECTION_LTR
@@ -764,6 +778,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             s.document = s.document.copy(text = text, modified = modified)
             s.lastModifiedAt = System.currentTimeMillis()
         }
+        editor.changeHistory = s.changeHistory.markedLines()
         refreshTabLabels()
         updateStatus()
     }
@@ -879,6 +894,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
             val charset = Charset.forName(s.document.encoding)
             val text = s.document.text
             files.save(uri, text, charset, s.document.lineEnding, s.document.hasBom)
+            s.changeHistory.recordSave()
+            s.baselineText = text
             s.document = s.document.copy(
                 uri = uri.toString(),
                 fileName = files.displayName(uri),
@@ -1086,7 +1103,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.setText(prev)
         editor.setSelection(prev.length)
         editor.addTextChangedListener(tw)
+        s.changeHistory.reconcile(prev, s.baselineText.ifEmpty { prev })
         s.document = s.document.copy(text = prev, modified = s.document.uri != null || prev.isNotEmpty())
+        editor.changeHistory = s.changeHistory.markedLines()
         refreshTabLabels()
         updateStatus()
     }
@@ -1100,7 +1119,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.setText(next)
         editor.setSelection(next.length)
         editor.addTextChangedListener(tw)
+        s.changeHistory.reconcile(next, s.baselineText.ifEmpty { next })
         s.document = s.document.copy(text = next, modified = s.document.uri != null || next.isNotEmpty())
+        editor.changeHistory = s.changeHistory.markedLines()
         refreshTabLabels()
         updateStatus()
     }
@@ -1322,6 +1343,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
                     modified = false
                 )
                 s.history.clear()
+                s.changeHistory.reset()
+                s.baselineText = loaded.text
+                editor.changeHistory = emptyMap()
                 editor.filters = emptyArray()
                 editor.removeTextChangedListener(tw)
                 editor.setText(loaded.text)

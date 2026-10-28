@@ -95,27 +95,30 @@ data class UserDefinedLanguage(
         }
     }
 
-    fun toJson(): String = Json.stringify(
-        Json.Value.Obj(
-            listOf<Pair<String, Json.Value>>(
-                "name" to Json.Value.Str(name),
-                "extensions" to Json.Value.Arr(extensions.map { Json.Value.Str(it) }),
-                "keywords" to Json.Value.Arr(keywords.map { list ->
-                    Json.Value.Arr(list.map { Json.Value.Str(it) })
-                }),
-                "types" to Json.Value.Arr(types.map { Json.Value.Str(it) }),
-                "lineComments" to Json.Value.Arr(lineComments.map { Json.Value.Str(it) }),
-                "blockComment" to blockComment?.let {
-                    Json.Value.Arr(listOf(Json.Value.Str(it.first), Json.Value.Str(it.second)))
-                } ?: Json.Value.Arr(emptyList()),
-                "stringDelimiters" to Json.Value.Arr(
-                    stringDelimiters.map { Json.Value.Str(it.toString()) }),
-                "operators" to Json.Value.Arr(operators.map { Json.Value.Str(it) }),
-                "caseInsensitive" to Json.Value.Bool(caseInsensitive)
-            )
-        ),
-        indent = 2
-    )
+    fun toJson(): String {
+        val block: Json.Value = blockComment?.let {
+            Json.Value.Arr(listOf(Json.Value.Str(it.first), Json.Value.Str(it.second)))
+        } ?: Json.Value.Arr(emptyList())
+        return Json.stringify(
+            Json.Value.Obj(
+                listOf(
+                    "name" to Json.Value.Str(name),
+                    "extensions" to Json.Value.Arr(extensions.map { Json.Value.Str(it) }),
+                    "keywords" to Json.Value.Arr(keywords.map { list ->
+                        Json.Value.Arr(list.map { Json.Value.Str(it) })
+                    }),
+                    "types" to Json.Value.Arr(types.map { Json.Value.Str(it) }),
+                    "lineComments" to Json.Value.Arr(lineComments.map { Json.Value.Str(it) }),
+                    "blockComment" to block,
+                    "stringDelimiters" to Json.Value.Arr(
+                        stringDelimiters.map { Json.Value.Str(it.toString()) }),
+                    "operators" to Json.Value.Arr(operators.map { Json.Value.Str(it) }),
+                    "caseInsensitive" to Json.Value.Bool(caseInsensitive)
+                )
+            ),
+            indent = 2
+        )
+    }
 
     /**
      * Tokenizes [text] with this UDL definition. Keyword list 1+ map to

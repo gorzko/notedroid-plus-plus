@@ -97,7 +97,7 @@ data class UserDefinedLanguage(
 
     fun toJson(): String = Json.stringify(
         Json.Value.Obj(
-            listOf(
+            listOf<Pair<String, Json.Value>>(
                 "name" to Json.Value.Str(name),
                 "extensions" to Json.Value.Arr(extensions.map { Json.Value.Str(it) }),
                 "keywords" to Json.Value.Arr(keywords.map { list ->

@@ -48,7 +48,7 @@ class JsonXmlToolTest {
 
     @Test
     fun jsonLargeIntegerPrecisionPreserved() {
-        val src = "{\"id\": 12345678901234567890}"
+        val src = "{\"id\":12345678901234567890}"
         val prettied = JsonTool.prettify(src).getOrThrow()
         assertTrue(prettied.contains("12345678901234567890"))
         assertEquals(src, JsonTool.minify(prettied).getOrThrow())

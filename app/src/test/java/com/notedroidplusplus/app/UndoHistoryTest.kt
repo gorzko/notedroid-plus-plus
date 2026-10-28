@@ -57,7 +57,7 @@ class UndoHistoryTest {
         val undone = h.undo(text)!!
         assertEquals("", undone)
         assertEquals("abc", h.redo(undone))
-        assertEquals("abc", h.undo(text))
+        assertEquals("", h.undo("abc"))
     }
 
     @Test
@@ -106,6 +106,6 @@ class UndoHistoryTest {
         val doc = "x".repeat(100_000)
         h.pushDelete(0, "y")
         // undo of one delete restores a single char, regardless of doc size
-        assertEquals(doc + "y", h.undo(doc))
+        assertEquals("y" + doc, h.undo(doc))
     }
 }

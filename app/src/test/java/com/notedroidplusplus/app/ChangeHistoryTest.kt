@@ -12,7 +12,7 @@ class ChangeHistoryTest {
     fun editMarksLineModifiedUnsaved() {
         val h = ChangeHistory()
         val base = "alpha\nbeta\ngamma"
-        h.recordEdit("alpha\nbeta!\ngamma", 6 + 5, 0, 1)
+        h.recordEdit("alpha\nbeta!\ngamma", 10, 0, 1)
         assertEquals(LineState.MODIFIED_UNSAVED, h.stateAt(1))
         assertEquals(LineState.NONE, h.stateAt(0))
         assertEquals(LineState.NONE, h.stateAt(2))
@@ -51,10 +51,10 @@ class ChangeHistoryTest {
     fun savedThenEditedAgainIsRevertModifiedAfterUndo() {
         val h = ChangeHistory()
         val base = "alpha\nbeta\ngamma"
-        h.recordEdit("alpha\nBETA\ngamma", 6, 3, 4)
+        h.recordEdit("alpha\nBETA\ngamma", 7, 3, 4)
         h.recordSave()
         // second edit round then undo: line differs from baseline but was saved before
-        h.recordEdit("alpha\nBETA2\ngamma", 6, 4, 5)
+        h.recordEdit("alpha\nBETA2\ngamma", 7, 4, 5)
         h.reconcile("alpha\nBETA2\ngamma", base)
         assertEquals(LineState.REVERT_MODIFIED, h.stateAt(1))
     }
@@ -62,10 +62,16 @@ class ChangeHistoryTest {
     @Test
     fun multiLineEditMarksSpan() {
         val h = ChangeHistory()
-        h.recordEdit("alpha\nbeta\ngamma\ndelta", 5, 1, 1)
+        // replacing the "beta" run plus its newline merges lines 0 and 1
+        h.recordEdit("alphaX\ngamma\ndelta", 5, 5, 1)
         assertEquals(LineState.MODIFIED_UNSAVED, h.stateAt(0))
-        assertEquals(LineState.MODIFIED_UNSAVED, h.stateAt(1))
-        assertEquals(LineState.NONE, h.stateAt(2))
+        assertEquals(LineState.NONE, h.stateAt(1))
+        // inserting a newline into line 1 marks lines 1 and 2
+        val h2 = ChangeHistory()
+        h2.recordEdit("alpha\nbet\na\ngamma", 9, 0, 2)
+        assertEquals(LineState.MODIFIED_UNSAVED, h2.stateAt(1))
+        assertEquals(LineState.MODIFIED_UNSAVED, h2.stateAt(2))
+        assertEquals(LineState.NONE, h2.stateAt(0))
     }
 
     @Test

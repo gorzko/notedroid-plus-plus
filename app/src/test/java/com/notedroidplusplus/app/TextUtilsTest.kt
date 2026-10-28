@@ -77,7 +77,7 @@ class TextUtilsTest {
         assertEquals("a b c", TextUtils.splitLines("a b c", 0, 0, "\n"))
         assertEquals("one\ntwo three", TextUtils.joinLines("one\ntwo\nthree", 4, 13))
         assertEquals("one\ntwo", TextUtils.joinLines("one\ntwo", 0, 3))
-        assertEquals("a\r\nb\r\nc\r\nd", TextUtils.splitLines("a b\r\nc d", 0, 9, "\r\n"))
+        assertEquals("a\r\nb\r\nc\r\nd", TextUtils.splitLines("a b\r\nc d", 0, 8, "\r\n"))
     }
 
     @Test

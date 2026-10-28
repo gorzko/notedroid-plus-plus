@@ -177,4 +177,69 @@ class MarkdownActionsTest {
         val r = MarkdownActions.table("before", 6)
         assertEquals("before\n\n| Column 1 | Column 2 |\n| --- | --- |\n|  |  |", r.text)
     }
+    @Test
+    fun collapsedCaretInsideMarkerPairDoesNotDoubleWrap() {
+        val r = MarkdownActions.toggleSpan("**x**", 2, 2, "**")
+        assertEquals("**x**", r.text)
+        assertEquals(2, r.newStart)
+        assertEquals(2, r.newEnd)
+    }
+
+    @Test
+    fun collapsedCaretAtSpanEdgeStillWraps() {
+        // Caret at the outer edge of the pair: existing wrap path (pre-PR-29 behavior preserved).
+        val r = MarkdownActions.toggleSpan("**x**", 0, 0, "**")
+        assertEquals("******x**", r.text)
+        val r2 = MarkdownActions.toggleSpan("**x**", 5, 5, "**")
+        assertEquals("**x******", r2.text)
+    }
+
+    @Test
+    fun collapsedCaretBeforeClosingMarkerDoesNotDoubleWrap() {
+        val r = MarkdownActions.toggleSpan("**x**", 3, 3, "**")
+        assertEquals("**x**", r.text)
+        assertEquals(3, r.newStart)
+        assertEquals(3, r.newEnd)
+    }
+
+    @Test
+    fun collapsedCaretOutsideAnySpanStillWraps() {
+        val r = MarkdownActions.toggleSpan("ab", 1, 1, "**")
+        assertEquals("a****b", r.text)
+    }
+    @Test
+    fun italicGuardInsideBoldSpanNoOps() {
+        // Single-char marker inside a ** span: the guard no-ops (pinned behavior, m1).
+        val r = MarkdownActions.italic("**x**", 2, 2)
+        assertEquals("**x**", r.text)
+        assertEquals(2, r.newStart)
+        assertEquals(2, r.newEnd)
+    }
+
+    @Test
+    fun inlineCodeInsideBoldSpanStillWraps() {
+        // Backtick is not the adjacent marker; the guard does not fire, wrap path taken.
+        val r = MarkdownActions.inlineCode("**x**", 2, 2)
+        assertEquals("**``x**", r.text)
+        assertEquals(3, r.newStart)
+        assertEquals(3, r.newEnd)
+    }
+
+    @Test
+    fun strikeInsideBoldSpanStillWraps() {
+        // Double-tilde is not the adjacent marker; the guard does not fire, wrap path taken.
+        val r = MarkdownActions.strike("**x**", 2, 2)
+        assertEquals("**~~~~x**", r.text)
+        assertEquals(4, r.newStart)
+        assertEquals(4, r.newEnd)
+    }
+
+    @Test
+    fun caretBetweenAdjacentPairsNoOps() {
+        // a**b****c: caret between the closing ** of pair 1 and opening ** of pair 2.
+        val r = MarkdownActions.toggleSpan("a**b****c", 5, 5, "**")
+        assertEquals("a**b****c", r.text)
+        assertEquals(5, r.newStart)
+        assertEquals(5, r.newEnd)
+    }
 }

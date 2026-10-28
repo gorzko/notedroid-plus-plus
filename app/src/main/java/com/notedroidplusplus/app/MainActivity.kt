@@ -821,11 +821,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
         return udlStore.forExtension(ext)
     }
 
-    private fun activateTab(index: Int) {
+    private fun activateTab(index: Int, syncOutgoing: Boolean = true) {
         if (index < 0 || index >= tabs.size) return
         if (previewMode != null) closePreview()
-        activeSession()?.let { it.caret = editor.selectionStart }
-        syncActiveDocument()
+        // Capture the outgoing session BEFORE `active` is reassigned so the
+        // editor content is always synced back to the session that owns it.
+        // Callers that already removed/mutated the active session (removeTab)
+        // pass syncOutgoing=false and persist the closing session themselves (#79).
+        val outgoing = if (syncOutgoing) activeSession() else null
+        outgoing?.let { it.caret = editor.selectionStart }
+        syncSession(outgoing)
         active = index
         val s = tabs[index]
         editor.filters = emptyArray()
@@ -855,7 +860,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun isEditorLocked(): Boolean = activeSession()?.readOnly == true
 
     private fun syncActiveDocument() {
-        val s = activeSession() ?: return
+        syncSession(activeSession())
+    }
+
+    private fun syncSession(s: TabSession?) {
+        if (s == null) return
         val text = editor.text?.toString() ?: return
         if (text != s.document.text || editor.text.isNullOrEmpty() != s.document.text.isEmpty()) {
             val modified = s.document.uri != null || text.isNotEmpty()
@@ -1260,12 +1269,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun removeTab(index: Int) {
         if (index < 0 || index >= tabs.size) return
+        if (active == index) tabs[index].caret = editor.selectionStart
         tabs[index].tab?.let { binding.tabLayout.removeTab(it) }
         tabs.removeAt(index)
         if (tabs.isEmpty()) { addTab(null, null); return }
         val next = (index).coerceAtMost(tabs.size - 1)
         active = next
-        activateTab(next)
+        // The removed session owned the editor content; its document is already
+        // current (per-keystroke sync), so the target session must NOT be
+        // overwritten with the removed tab's text (#79).
+        activateTab(next, syncOutgoing = false)
     }
 
     // ---- Find / Replace ----

@@ -455,6 +455,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
             return
         }
         dir.mkdirs()
+        val wanted = dirty.map { s ->
+            s.document.fileName.map { c -> if (c.isLetterOrDigit() || c in "-_.") c else '_' }.joinToString("")
+        }.toSet()
+        // r4: drop stale backups for buffers that are no longer dirty
+        dir.listFiles()?.forEach { f -> if (f.extension == "bak" && f.nameWithoutExtension !in wanted) f.delete() }
         dirty.forEach { s ->
             val safe = s.document.fileName.map { c -> if (c.isLetterOrDigit() || c in "-_.") c else '_' }.joinToString("")
             runCatching { java.io.File(dir, "$safe.bak").writeText(s.document.text) }
@@ -480,7 +485,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun applyEditingSettings() {
-        editor.caretWidth = prefs.getInt("caret_width", 2).coerceIn(1, 3)
+        editor.caretWidth = prefs.getInt("caret_width", 2).coerceIn(2, 3)
         editor.currentLineStyle = prefs.getString("current_line_style", "highlight") ?: "highlight"
         editor.virtualSpace = prefs.getBoolean("virtual_space", false)
         editor.scrollPastEnd = prefs.getBoolean("scroll_past_end", false)
@@ -1198,12 +1203,12 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .show()
     }
 
-    private fun transformCase(kind: String, op: (String, Int, Int) -> String) {
+    private fun transformCase(kind: String?, op: (String, Int, Int) -> String) {
         val text = editor.text?.toString() ?: return
         val s = editor.selectionStart.coerceAtMost(editor.selectionEnd)
         val e = editor.selectionEnd.coerceAtLeast(editor.selectionStart)
         val replaced = op(text, s, e)
-        if (replaced != text) {
+        if (replaced != text && kind != null) {
             recordAction(MacroRecorder.Action.TransformCase(kind, s, e))
         }
         setEditorText(replaced)
@@ -2171,13 +2176,13 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.action_uppercase)) { transformCase("upper") { t, s, e -> TextUtils.toUpper(t, s, e) } }
         item(getString(R.string.action_lowercase)) { transformCase("lower") { t, s, e -> TextUtils.toLower(t, s, e) } }
         item(getString(R.string.action_titlecase)) { transformCase("title") { t, s, e -> TextUtils.titleCase(t, s, e) } }
-        item(getString(R.string.op_proper)) { transformCase("title") { t, s, e -> TextUtils.properCase(t, s, e, blend = false) } }
-        item(getString(R.string.op_proper_blend)) { transformCase("title") { t, s, e -> TextUtils.properCase(t, s, e, blend = true) } }
-        item(getString(R.string.op_sentence)) { transformCase("lower") { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = false) } }
-        item(getString(R.string.op_sentence_blend)) { transformCase("lower") { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = true) } }
+        item(getString(R.string.op_proper)) { transformCase("proper") { t, s, e -> TextUtils.properCase(t, s, e, blend = false) } }
+        item(getString(R.string.op_proper_blend)) { transformCase("proper-blend") { t, s, e -> TextUtils.properCase(t, s, e, blend = true) } }
+        item(getString(R.string.op_sentence)) { transformCase("sentence") { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = false) } }
+        item(getString(R.string.op_sentence_blend)) { transformCase("sentence-blend") { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = true) } }
         item(getString(R.string.action_toggle_case)) { transformCase("toggle") { t, s, e -> TextUtils.toggleCase(t, s, e) } }
         item(getString(R.string.op_invert)) { transformCase("toggle") { t, s, e -> TextUtils.invertCase(t, s, e) } }
-        item(getString(R.string.op_random_case)) { transformCase("upper") { t, s, e -> TextUtils.randomCase(t, s, e, java.util.Random()) } }
+        item(getString(R.string.op_random_case)) { transformCase(null) { t, s, e -> TextUtils.randomCase(t, s, e, java.util.Random()) } }
     }
 
     private fun showBlankOpsMenu() = popup {

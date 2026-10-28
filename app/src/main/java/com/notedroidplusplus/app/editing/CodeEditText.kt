@@ -97,12 +97,11 @@ class CodeEditText @JvmOverloads constructor(
             requestLayout()
         }
 
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-        if (scrollPastEnd && layout != null) {
-            val extra = (height * 0.8f).toInt()
-            setMeasuredDimension(measuredWidth, measuredHeight + extra)
-        }
+    override fun computeVerticalScrollRange(): Int {
+        val base = super.computeVerticalScrollRange()
+        if (!scrollPastEnd || layout == null) return base
+        // allow scrolling until the last line sits near the viewport top
+        return base + (height * 0.8f).toInt() - lineHeight()
     }
     var overwriteMode: Boolean = false
         set(value) {
@@ -153,20 +152,41 @@ class CodeEditText @JvmOverloads constructor(
     }
 
     /**
-     * Virtual space: clamps touch-to-caret placement at end-of-line by
-     * padding the line with spaces up to the tapped column instead of
-     * snapping back to the last character.
+     * Virtual space (caret-only): the caret may sit past end-of-line; the
+     * spaces materialize only when the user actually types into the region.
      */
-    fun virtualSpaceFor(text: String, line: Int, targetColumn: Int): Int {
+    var pendingVirtualColumn: Int = -1
+        private set
+
+    /** Records a tap beyond end-of-line as the virtual caret column (no text insert). */
+    fun virtualColumnFor(text: String, line: Int, targetColumn: Int): Int {
         if (!virtualSpace) return -1
         val lineStart = gl_lineStart(text, line)
         val lineEnd = text.indexOf('\n', lineStart).let { if (it < 0) text.length else it }
         val contentEnd = if (lineEnd > lineStart && text[lineEnd - 1] == '\r') lineEnd - 1 else lineEnd
         val currentLen = contentEnd - lineStart
-        if (targetColumn <= currentLen) return -1
-        val spaces = buildString { repeat(targetColumn - currentLen) { append(' ') } }
-        editableText?.insert(contentEnd, spaces)
-        return contentEnd + spaces.length
+        if (targetColumn <= currentLen) {
+            pendingVirtualColumn = -1
+            return -1
+        }
+        pendingVirtualColumn = targetColumn
+        return contentEnd
+    }
+
+    /** Pads the line to [pendingVirtualColumn] before a character is typed there. */
+    private fun materializeVirtualSpace(pos: Int) {
+        val col = pendingVirtualColumn
+        if (col < 0 || !virtualSpace) return
+        pendingVirtualColumn = -1
+        val text = editableText?.toString() ?: return
+        val lineStart = text.lastIndexOf('\n', (pos - 1).coerceAtLeast(0)).let { if (it < 0) 0 else it + 1 }
+        val lineEnd = text.indexOf('\n', lineStart).let { if (it < 0) text.length else it }
+        val contentEnd = if (lineEnd > lineStart && text[lineEnd - 1] == '\r') lineEnd - 1 else lineEnd
+        val currentLen = contentEnd - lineStart
+        if (col > currentLen) {
+            val spaces = buildString { repeat(col - currentLen) { append(' ') } }
+            editableText?.insert(contentEnd, spaces)
+        }
     }
 
     private fun gl_lineStart(text: String, line: Int): Int {
@@ -217,7 +237,6 @@ class CodeEditText @JvmOverloads constructor(
 
     override fun onCreateInputConnection(outAttrs: android.view.inputmethod.EditorInfo): android.view.inputmethod.InputConnection? {
         val ic = super.onCreateInputConnection(outAttrs) ?: return null
-        if (!autoInsertPairs && !overwriteMode) return ic
         return PairAwareInputConnection(ic, this)
     }
 
@@ -245,16 +264,20 @@ class CodeEditText @JvmOverloads constructor(
                     MatchedPairs.Result.None -> { /* plain insert below */ }
                 }
             }
-            // HTML/XML tag closer: '>' right after a complete opener inserts </name>
+            // HTML/XML tag closer: '>' right after a complete opener inserts </name>.
+            // tagCloserFor expects POST-insertion state, so simulate the '>' being
+            // committed and return typed + closer so the '>' itself is committed too.
             if (typed == '>' && (language == LanguageMode.HTML || language == LanguageMode.XML)) {
                 val buf = editableText?.toString() ?: ""
-                val closer = MatchedPairs.tagCloserFor(buf, pos)
+                val after = buf.substring(0, pos) + typed + buf.substring(pos)
+                val closer = MatchedPairs.tagCloserFor(after, pos + 1)
                 if (closer != null) {
                     lastInsertWasPair = true
-                    return closer
+                    return typed + closer
                 }
             }
         }
+        materializeVirtualSpace(pos)
         return if (text.isEmpty()) null else text
     }
 
@@ -422,14 +445,13 @@ class CodeEditText @JvmOverloads constructor(
         invalidate()
     }
 
-    /** Virtual space: pads with spaces when a tap lands beyond end-of-line. */
+    /** Virtual space: records a tap beyond end-of-line as a virtual caret column. */
     fun applyVirtualSpace(tappedColumn: Int) {
         if (!virtualSpace) return
         val text = editableText?.toString() ?: return
         val gl = layout ?: return
         val line = gl.getLineForOffset(selectionStart)
-        val newOffset = virtualSpaceFor(text, line, tappedColumn)
-        if (newOffset >= 0) setSelection(newOffset)
+        virtualColumnFor(text, line, tappedColumn)
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -497,7 +519,7 @@ class CodeEditText @JvmOverloads constructor(
 
     /** Draws an extra caret-width bar (Notepad++ caret width 1-3 px) at the caret column. */
     private fun drawCaretWidth(canvas: Canvas) {
-        if (caretWidth <= 2 || !isFocused) return
+        if (caretWidth <= 2 || !isFocused) return  // width 1-2 keeps the system caret
         val gl = layout ?: return
         val pos = selectionStart
         if (pos < 0) return

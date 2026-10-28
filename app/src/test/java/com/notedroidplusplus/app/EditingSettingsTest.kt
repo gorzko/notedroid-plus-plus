@@ -93,4 +93,18 @@ class MatchedPairsTest {
         assertNull(MatchedPairs.tagCloserFor("<br/>", 5))
         assertNull(MatchedPairs.tagCloserFor("</div>", 6))
     }
+
+    @Test
+    fun html_tag_closer_call_site_contract_simulates_post_insertion() {
+        // Production call site (CodeEditText.applyTypedText): the '>' is NOT yet
+        // committed, so the function must be fed the simulated post-insertion text.
+        val pre = "<div"
+        val typed = '>'
+        val pos = 4
+        val after = pre.substring(0, pos) + typed + pre.substring(pos)
+        val closer = MatchedPairs.tagCloserFor(after, pos + 1)
+        assertEquals("</div>", closer)
+        // and the replacement committed is typed + closer, not the closer alone
+        assertEquals("></div>", typed + closer!!)
+    }
 }

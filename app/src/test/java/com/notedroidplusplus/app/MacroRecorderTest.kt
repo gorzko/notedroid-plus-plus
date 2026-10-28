@@ -64,6 +64,16 @@ class MacroRecorderTest {
     }
 
     @Test
+    fun proper_and_sentence_replay_delegate_to_textUtils() {
+        val buf = StringBuffer("hello world. second sentence")
+        assertTrue(MacroRecorder.apply(buf, Action.TransformCase("proper", 0, buf.text.length)))
+        assertEquals("Hello World. Second Sentence", buf.text)
+        val buf2 = StringBuffer("ALPHA BETA. GAMMA")
+        assertTrue(MacroRecorder.apply(buf2, Action.TransformCase("sentence", 0, buf2.text.length)))
+        assertEquals("Alpha beta. Gamma", buf2.text)
+    }
+
+    @Test
     fun invalid_actions_are_skipped_and_reported() {
         val buf = StringBuffer("abc")
         assertEquals(0, MacroRecorder.replay(buf, listOf(Action.Insert(99, "x"), Action.Delete(5, 1))))

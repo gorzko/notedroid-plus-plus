@@ -53,7 +53,7 @@
             app:key="caret_width"
             app:title="@string/pref_caret_width"
             app:defaultValue="2"
-            app:min="1"
+            app:min="2"
             android:max="3"
             app:showSeekBarValue="true" />
         <ListPreference

@@ -87,6 +87,10 @@ object MacroRecorder {
                         w.lowercase().replaceFirstChar { it.uppercase() }
                     }
                     "toggle" -> text.substring(s, e).map { if (it.isUpperCase()) it.lowercaseChar() else it.uppercaseChar() }.joinToString("")
+                    "proper" -> TextUtils.properCase(text, s, e, blend = false)
+                    "proper-blend" -> TextUtils.properCase(text, s, e, blend = true)
+                    "sentence" -> TextUtils.sentenceCase(text, s, e, blend = false)
+                    "sentence-blend" -> TextUtils.sentenceCase(text, s, e, blend = true)
                     else -> return false
                 }
                 buffer.delete(s, e)

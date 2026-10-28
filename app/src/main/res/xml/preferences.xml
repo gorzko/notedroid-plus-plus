@@ -27,4 +27,180 @@
         app:defaultValue="Default"
         app:entries="@array/theme_names"
         app:entryValues="@array/theme_names" />
+
+    <PreferenceCategory app:title="@string/pref_recent_files">
+        <SeekBarPreference
+            app:key="recent_max"
+            app:title="@string/pref_recent_max"
+            app:defaultValue="10"
+            app:min="1"
+            android:max="50"
+            app:showSeekBarValue="true" />
+        <ListPreference
+            app:key="recent_display"
+            app:title="@string/pref_recent_display"
+            app:defaultValue="name"
+            app:entries="@array/recent_display_names"
+            app:entryValues="@array/recent_display_values" />
+        <Preference
+            app:key="recent_clear"
+            app:title="@string/pref_recent_clear"
+            app:summary="@string/pref_recent_clear_summary" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/pref_editing">
+        <SeekBarPreference
+            app:key="caret_width"
+            app:title="@string/pref_caret_width"
+            app:defaultValue="2"
+            app:min="2"
+            android:max="3"
+            app:showSeekBarValue="true" />
+        <ListPreference
+            app:key="current_line_style"
+            app:title="@string/pref_current_line_style"
+            app:defaultValue="highlight"
+            app:entries="@array/current_line_style_names"
+            app:entryValues="@array/current_line_style_values" />
+        <SwitchPreferenceCompat
+            app:key="virtual_space"
+            app:title="@string/pref_virtual_space"
+            app:defaultValue="false" />
+        <SwitchPreferenceCompat
+            app:key="scroll_past_end"
+            app:title="@string/pref_scroll_past_end"
+            app:defaultValue="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/pref_margins">
+        <SwitchPreferenceCompat
+            app:key="show_vertical_edge"
+            app:title="@string/action_show_vertical_edge"
+                       app:defaultValue="true" />
+        <EditTextPreference
+            app:key="edge_columns"
+            app:title="@string/pref_edge_columns"
+            app:defaultValue="80"
+            android:inputType="text" />
+        <SwitchPreferenceCompat
+            app:key="edge_background_mode"
+            app:title="@string/pref_edge_background"
+            app:defaultValue="false" />
+        <SeekBarPreference
+            app:key="editor_padding_left"
+            app:title="@string/pref_padding_left"
+            app:defaultValue="4"
+            app:min="0"
+            android:max="32"
+            app:showSeekBarValue="true" />
+        <SeekBarPreference
+            app:key="editor_padding_right"
+            app:title="@string/pref_padding_right"
+            app:defaultValue="4"
+            app:min="0"
+            android:max="32"
+            app:showSeekBarValue="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/pref_autocompletion">
+        <SwitchPreferenceCompat
+            app:key="word_completion"
+            app:title="@string/pref_word_completion"
+            app:defaultValue="false" />
+        <SeekBarPreference
+            app:key="word_min_chars"
+            app:title="@string/pref_word_min_chars"
+            app:defaultValue="3"
+            app:min="1"
+            android:max="10"
+            app:showSeekBarValue="true" />
+        <SwitchPreferenceCompat
+            app:key="function_completion"
+            app:title="@string/pref_function_completion"
+            app:defaultValue="false" />
+        <SwitchPreferenceCompat
+            app:key="auto_insert_pairs"
+            app:title="@string/pref_auto_insert_pairs"
+            app:defaultValue="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/pref_new_doc_title">
+        <ListPreference
+            app:key="new_doc_encoding"
+            app:title="@string/pref_new_doc_encoding"
+            app:defaultValue="UTF-8"
+            app:entries="@array/encoding_names"
+            app:entryValues="@array/encoding_names" />
+        <ListPreference
+            app:key="new_doc_eol"
+            app:title="@string/pref_new_doc_eol"
+            app:defaultValue="&#10;"
+            app:entries="@array/eol_names"
+            app:entryValues="@array/eol_values" />
+        <ListPreference
+            app:key="new_doc_language"
+            app:title="@string/pref_new_doc_language"
+            app:defaultValue="NORMAL_TEXT"
+            app:entries="@array/language_mode_names"
+            app:entryValues="@array/language_mode_names" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/pref_indent_title">
+        <SeekBarPreference
+            app:key="tab_size"
+            app:title="@string/pref_tab_size"
+            app:defaultValue="4"
+            app:min="1"
+            android:max="16"
+            app:showSeekBarValue="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/pref_searching_title">
+        <SwitchPreferenceCompat
+            app:key="autofill_find"
+            app:title="@string/pref_autofill_find"
+            app:defaultValue="true" />
+        <SeekBarPreference
+            app:key="find_max_chars"
+            app:title="@string/pref_find_max_chars"
+            app:defaultValue="256"
+            app:min="16"
+            android:max="1024"
+            app:showSeekBarValue="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/pref_backup_title">
+        <SwitchPreferenceCompat
+            app:key="session_snapshot"
+            app:title="@string/pref_session_snapshot"
+            app:defaultValue="true" />
+        <SwitchPreferenceCompat
+            app:key="periodic_backup"
+            app:title="@string/pref_periodic_backup"
+            app:defaultValue="true" />
+        <SeekBarPreference
+            app:key="periodic_backup_min"
+            app:title="@string/pref_periodic_backup_min"
+            app:defaultValue="3"
+            app:min="1"
+            android:max="30"
+            app:showSeekBarValue="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/pref_performance">
+        <SeekBarPreference
+            app:key="highlight_threshold_mb"
+            app:title="@string/pref_highlight_threshold"
+            app:defaultValue="5"
+            app:min="1"
+            android:max="50"
+            app:showSeekBarValue="true" />
+        <SeekBarPreference
+            app:key="monitoring_interval"
+            app:title="@string/pref_monitoring_interval"
+            app:defaultValue="2"
+            app:min="1"
+            android:max="60"
+            app:showSeekBarValue="true" />
+    </PreferenceCategory>
 </PreferenceScreen>

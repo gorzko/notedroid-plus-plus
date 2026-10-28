@@ -47,6 +47,36 @@ icon, dark theme, back/forward gesture support).
   locales, persisted and applied without changing the system language
 - Wrap lines, zoom in/out, functional settings screen
 
+**Notepad++ parity batch (settings, tools, panels)**
+- Recent Files History settings (max entries, name/full-path display, clear)
+- Find in Files filters (glob includes, `!` file excludes, `!\dir` / `!+\dir`
+  directory exclusions), In-all-sub-folders toggle, open-buffer priority
+- Tools: MD5/SHA-1/SHA-256/SHA-512 hashing (text dialog, SAF files, selection
+  to clipboard) and a Character Panel (ASCII grid + HTML entities + U+XXXX
+  codepoint insert) reflecting the tab encoding
+- View Current File In... (external apps via SAF grant) and Open containing
+  folder from the tab menu
+- Help (?) menu: About, Online User Manual, Project Page, copyable Debug Info
+- File association intent filters for ~35 text/code extensions
+- Window menu with open-document list and Sort By (name/type/length/modified)
+- Macro menu: record/playback, run N times, save & replay persisted macros
+- View > Monitoring (tail -f) per-tab live reload with dirty-buffer protection
+- Vertical edge guides (multi-column, background mode) and editor padding
+- Editing settings: caret width, current-line frame style, virtual space,
+  scroll beyond last line, INS/OVR overwrite mode in the status bar
+- Auto-completion: word/keyword popup and matched-pair auto-insert
+- View > Summary dialog and Restore Default Zoom
+- Search: Count, Find All in Current/All Opened Documents, Mark All +
+  Clear All Marks, Extended (\n \t \xNN) search mode, ". matches newline"
+- Bookmarks: toggle/next/previous/clear/invert + cut/copy/paste bookmarked
+  lines, gutter circle markers, persisted across rotation and process death
+- View > Show Symbol: space/tab, EOL, non-printing, control chars, indent
+  guide, wrap symbol, show-all master toggle
+- View: full-screen + distraction-free modes, per-tab RTL/LTR text direction
+- Settings sections: New Document defaults, Indentation, Searching
+  (auto-fill), Backup (session snapshot + periodic dirty-buffer backup),
+  Performance (highlight threshold)
+
 **New built-in features**
 - **In-tab preview** for Markdown and HTML: a document view mode toggled from
   the toolbar, rendered in a sandboxed WebView (JavaScript disabled, file/content

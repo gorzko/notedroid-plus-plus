@@ -14,6 +14,22 @@
         android:maxLines="1"
         android:imeOptions="actionSearch" />
 
+    <EditText
+        android:id="@+id/fif_filters"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/fif_filters_hint"
+        android:inputType="text"
+        android:maxLines="1"
+        android:imeOptions="actionSearch" />
+
+    <CheckBox
+        android:id="@+id/fif_all_subfolders"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/fif_all_subfolders"
+        android:checked="true" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -38,6 +54,15 @@
             android:text="@string/use_regex" />
     </LinearLayout>
 
+    <EditText
+        android:id="@+id/fif_replace"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/fif_replace_hint"
+        android:inputType="text"
+        android:maxLines="1"
+        android:imeOptions="actionSearch" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -58,6 +83,12 @@
             android:text="@string/cancel"
             android:visibility="gone" />
     </LinearLayout>
+
+    <Button
+        android:id="@+id/fif_replace_all"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/fif_replace_all" />
 
     <ProgressBar
         android:id="@android:id/progress"

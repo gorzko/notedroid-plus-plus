@@ -33,6 +33,57 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/*" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.EDIT" />
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="application/xml" />
+                <data android:mimeType="application/javascript" />
+                <data android:mimeType="application/x-yaml" />
+                <data android:mimeType="application/yaml" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.EDIT" />
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:pathPattern=".*\\.kt$" />
+                <data android:pathPattern=".*\\.kts$" />
+                <data android:pathPattern=".*\\.py$" />
+                <data android:pathPattern=".*\\.md$" />
+                <data android:pathPattern=".*\\.markdown$" />
+                <data android:pathPattern=".*\\.json$" />
+                <data android:pathPattern=".*\\.xml$" />
+                <data android:pathPattern=".*\\.html$" />
+                <data android:pathPattern=".*\\.htm$" />
+                <data android:pathPattern=".*\\.css$" />
+                <data android:pathPattern=".*\\.js$" />
+                <data android:pathPattern=".*\\.ts$" />
+                <data android:pathPattern=".*\\.java$" />
+                <data android:pathPattern=".*\\.c$" />
+                <data android:pathPattern=".*\\.cpp$" />
+                <data android:pathPattern=".*\\.h$" />
+                <data android:pathPattern=".*\\.hpp$" />
+                <data android:pathPattern=".*\\.sh$" />
+                <data android:pathPattern=".*\\.yml$" />
+                <data android:pathPattern=".*\\.yaml$" />
+                <data android:pathPattern=".*\\.ini$" />
+                <data android:pathPattern=".*\\.csv$" />
+                <data android:pathPattern=".*\\.sql$" />
+                <data android:pathPattern=".*\\.txt$" />
+                <data android:pathPattern=".*\\.log$" />
+                <data android:pathPattern=".*\\.go$" />
+                <data android:pathPattern=".*\\.rs$" />
+                <data android:pathPattern=".*\\.rb$" />
+                <data android:pathPattern=".*\\.swift$" />
+                <data android:pathPattern=".*\\.lua$" />
+                <data android:pathPattern=".*\\.php$" />
+                <data android:pathPattern=".*\\.cs$" />
+                <data android:pathPattern=".*\\.tex$" />
+                <data android:pathPattern=".*\\.bat$" />
+            </intent-filter>
         </activity>
 
         <activity

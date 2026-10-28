@@ -31,17 +31,28 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.documentfile.provider.DocumentFile
 import com.google.android.material.tabs.TabLayout
 import com.notedroidplusplus.app.core.Document
 import com.notedroidplusplus.app.core.FileManager
 import com.notedroidplusplus.app.core.RecentFiles
+import com.notedroidplusplus.app.core.RecentFilesSettings
+import com.notedroidplusplus.app.core.MacroRecorder
+import com.notedroidplusplus.app.core.MacroStore
 import com.notedroidplusplus.app.core.SaveAsCoordinator
+import com.notedroidplusplus.app.core.WindowSort
 import com.notedroidplusplus.app.core.SessionStore
 import com.notedroidplusplus.app.core.TextUtils
 import com.notedroidplusplus.app.databinding.ActivityMainBinding
 import com.notedroidplusplus.app.editing.CodeEditText
+import com.notedroidplusplus.app.editing.AutoComplete
 import com.notedroidplusplus.app.editing.ContentSniffer
+import com.notedroidplusplus.app.editing.EdgeColumns
+import com.notedroidplusplus.app.editing.MatchedPairs
+import com.notedroidplusplus.app.editing.ShowSymbolFlags
+import com.notedroidplusplus.app.search.resolved
 import com.notedroidplusplus.app.editing.MarkdownActions
+import com.notedroidplusplus.app.editing.SyntaxHighlighter
 import com.notedroidplusplus.app.files.FindInFilesActivity
 import com.notedroidplusplus.app.plugins.PluginHost
 import com.notedroidplusplus.app.plugins.PluginImportActivity
@@ -56,8 +67,11 @@ import com.notedroidplusplus.app.search.findPrev
 import com.notedroidplusplus.app.search.replaceAll
 import com.notedroidplusplus.app.settings.SettingsActivity
 import com.notedroidplusplus.app.settings.ThemeRegistry
+import com.notedroidplusplus.app.tools.CharacterTable
+import com.notedroidplusplus.app.tools.HashTool
 import com.notedroidplusplus.app.tools.JsonTool
 import com.notedroidplusplus.app.tools.XmlTool
+import kotlin.concurrent.thread
 import java.nio.charset.Charset
 
 class MainActivity : AppCompatActivity(), PluginHost {
@@ -82,7 +96,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
         var tab: TabLayout.Tab?,
         val history: com.notedroidplusplus.app.core.UndoHistory = com.notedroidplusplus.app.core.UndoHistory(),
         var caret: Int = 0,
-        var readOnly: Boolean = false
+        var readOnly: Boolean = false,
+        var lastModifiedAt: Long = 0L,
+        var monitoring: Boolean = false,
+        var bookmarks: Set<Int> = emptySet(),
+        var textDirectionRtl: Boolean = false
     )
 
     private val tabs = mutableListOf<TabSession>()
@@ -189,6 +207,17 @@ class MainActivity : AppCompatActivity(), PluginHost {
         })
         editor.setOnTouchListener { v, event ->
             scaleDetector?.onTouchEvent(event)
+            if (event.actionMasked == android.view.MotionEvent.ACTION_UP && editor.virtualSpace) {
+                // compute the tapped column and let the editor pad to it after placement
+                val gl = editor.layout
+                if (gl != null) {
+                    val x = event.x + editor.scrollX - editor.compoundPaddingLeft
+                    val y = event.y + editor.scrollY - editor.paddingTop
+                    val line = gl.getLineForVertical(y.toInt().coerceIn(0, (gl.lineCount - 1).coerceAtLeast(0)))
+                    val col = ((x / editor.paint.measureText("8")).toInt()).coerceAtLeast(0)
+                    editor.post { editor.applyVirtualSpace(col) }
+                }
+            }
             v.performClick()
             false
         }
@@ -234,6 +263,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
         binding.cbMatchCase.setOnCheckedChangeListener { _, _ -> refreshFindOptions() }
         binding.cbWholeWord.setOnCheckedChangeListener { _, _ -> refreshFindOptions() }
         binding.cbRegex.setOnCheckedChangeListener { _, _ -> refreshFindOptions() }
+        binding.cbExtended.setOnCheckedChangeListener { _, _ -> refreshFindOptions() }
+        binding.cbDotAll.setOnCheckedChangeListener { _, _ -> refreshFindOptions() }
+        binding.btnCount.setOnClickListener { countMatchesInDoc() }
+        binding.btnFindAll.setOnClickListener { findAllInDocs(allTabs = false) }
+        binding.btnMarkAll.setOnClickListener { markAll() }
         binding.cbWrapAround.isChecked = true
 
         binding.findInput.setOnEditorActionListener { _, actionId, _ ->
@@ -245,6 +279,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
         editor.addTextChangedListener(tw)
         editor.onSelectionChange = { updateStatus() }
+        editor.onOverwriteToggled = { updateStatus() }
+        binding.statusInsOvr.setOnClickListener {
+            editor.overwriteMode = !editor.overwriteMode
+        }
+        attachCompletionPopup()
 
         if (savedInstanceState != null) {
             restoreState(savedInstanceState)
@@ -267,12 +306,31 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 .setTitle(R.string.restore_session_title)
                 .setMessage(getString(R.string.restore_session_msg, saved.size))
                 .setPositiveButton(R.string.yes) { _, _ -> restoreSession(saved) }
-                .setNegativeButton(R.string.no) { _, _ -> { sessionStore.clear(); addTab(null, null) } }
+                .setNegativeButton(R.string.no) { _, _ -> { sessionStore.clear(); offerBackupRestore() } }
                 .setCancelable(false)
                 .show()
         } else {
-            addTab(null, null)
+            offerBackupRestore()
         }
+    }
+
+    /** Crash-recovery fallback: reopen dirty buffers saved by the periodic backup. */
+    private fun offerBackupRestore() {
+        val backups = readPeriodicBackups()
+        if (backups.isEmpty()) {
+            addTab(null, null)
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.restore_session_title)
+            .setMessage(getString(R.string.backup_restore_msg, backups.size))
+            .setPositiveButton(R.string.yes) { _, _ ->
+                backups.forEach { (name, text) -> addTab(null, text, name = name) }
+                Toast.makeText(this, R.string.backup_restored, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(R.string.no) { _, _ -> addTab(null, null) }
+            .setCancelable(false)
+            .show()
     }
 
     private fun restoreSession(saved: List<SessionStore.TabState>) {
@@ -285,7 +343,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 modified = st.modified
             )
             session.caret = st.caret
+            session.bookmarks = st.bookmarks.toSet()
         }
+        sessionStore.clear()
         activateTab(0)
         refreshTabLabels()
     }
@@ -293,6 +353,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     override fun onPause() {
         super.onPause()
         saveSessionSnapshot()
+        if (prefs.getBoolean("periodic_backup", true)) writePeriodicBackup()
     }
 
     override fun onStop() {
@@ -302,6 +363,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun saveSessionSnapshot() {
         if (tabs.isEmpty()) return
+        if (!prefs.getBoolean("session_snapshot", true)) return
         syncActiveDocument()
         activeSession()?.let { it.caret = editor.selectionStart }
         val hasContent = tabs.any { it.document.text.isNotEmpty() }
@@ -315,7 +377,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 s.document.encoding,
                 s.document.lineEnding,
                 s.document.modified,
-                s.caret
+                s.caret,
+                s.bookmarks.toList()
             )
         })
     }
@@ -330,7 +393,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         super.onSaveInstanceState(outState)
         syncActiveDocument()
         activeSession()?.let { it.caret = editor.selectionStart }
-        val states = tabs.map { arrayOf(it.document.uri, it.document.fileName, it.document.text, it.document.language.name, it.document.encoding, it.document.lineEnding, it.document.modified, it.caret, it.readOnly) }
+        val states = tabs.map { arrayOf(it.document.uri, it.document.fileName, it.document.text, it.document.language.name, it.document.encoding, it.document.lineEnding, it.document.modified, it.caret, it.readOnly, ArrayList(it.bookmarks), it.textDirectionRtl) }
         outState.putSerializable(KEY_TABS, ArrayList(states))
         outState.putInt(KEY_ACTIVE, active)
     }
@@ -352,11 +415,64 @@ class MainActivity : AppCompatActivity(), PluginHost {
             session.document = doc
             session.caret = arr[7] as Int
             session.readOnly = arr[8] as? Boolean ?: false
+            session.bookmarks = (arr[9] as? ArrayList<Int>)?.toSet() ?: emptySet()
+            session.textDirectionRtl = arr[10] as? Boolean ?: false
+        }
+        if (tabs.isEmpty()) {
+            addTab(null, null)
+            return
         }
         val act = state.getInt(KEY_ACTIVE, 0).coerceIn(0, tabs.size - 1)
         activateTab(act)
         activeSession()?.let { editor.setSelection(it.caret.coerceIn(0, it.document.text.length)) }
         refreshTabLabels()
+    }
+
+    private val backupHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var backupRunnable: Runnable? = null
+
+    private fun startPeriodicBackup() {
+        backupRunnable?.let { backupHandler.removeCallbacks(it) }
+        if (!prefs.getBoolean("periodic_backup", true)) return
+        val minutes = prefs.getInt("periodic_backup_min", 3).coerceIn(1, 30)
+        val runnable = object : Runnable {
+            override fun run() {
+                thread(name = "periodic-backup") { runCatching { writePeriodicBackup() } }
+                backupHandler.postDelayed(this, minutes * 60_000L)
+            }
+        }
+        backupRunnable = runnable
+        backupHandler.postDelayed(runnable, minutes * 60_000L)
+    }
+
+    /** Writes dirty unsaved buffers to app-private storage for crash recovery. */
+    private fun writePeriodicBackup() {
+        val dirty = tabs.filter { it.document.modified && it.document.uri == null && it.document.text.isNotEmpty() }
+        val dir = java.io.File(filesDir, "backups")
+        if (dirty.isEmpty()) {
+            // retention: nothing dirty anymore - drop backups that are no longer needed
+            dir.listFiles()?.forEach { it.delete() }
+            return
+        }
+        dir.mkdirs()
+        val wanted = dirty.map { s ->
+            s.document.fileName.map { c -> if (c.isLetterOrDigit() || c in "-_.") c else '_' }.joinToString("")
+        }.toSet()
+        // r4: drop stale backups for buffers that are no longer dirty
+        dir.listFiles()?.forEach { f -> if (f.extension == "bak" && f.nameWithoutExtension !in wanted) f.delete() }
+        dirty.forEach { s ->
+            val safe = s.document.fileName.map { c -> if (c.isLetterOrDigit() || c in "-_.") c else '_' }.joinToString("")
+            runCatching { java.io.File(dir, "$safe.bak").writeText(s.document.text) }
+        }
+    }
+
+    /** Lists recoverable periodic-backup buffers (name -> text), empty when none. */
+    private fun readPeriodicBackups(): List<Pair<String, String>> {
+        val dir = java.io.File(filesDir, "backups")
+        if (!dir.isDirectory) return emptyList()
+        return dir.listFiles { f -> f.isFile && f.extension == "bak" }
+            ?.mapNotNull { f -> runCatching { f.nameWithoutExtension to f.readText() }.getOrNull() }
+            .orEmpty()
     }
 
     private fun applyPersistedSettings() {
@@ -365,15 +481,29 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.setHorizontallyScrolling(!prefs.getBoolean("wrap_lines", false))
         val fontSize = prefs.getInt("font_size", 14)
         editor.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat().coerceIn(8f, 40f))
+        applyEditingSettings()
+    }
+
+    private fun applyEditingSettings() {
+        editor.caretWidth = prefs.getInt("caret_width", 2).coerceIn(2, 3)
+        editor.currentLineStyle = prefs.getString("current_line_style", "highlight") ?: "highlight"
+        editor.virtualSpace = prefs.getBoolean("virtual_space", false)
+        editor.scrollPastEnd = prefs.getBoolean("scroll_past_end", false)
+        editor.leftPaddingDp = prefs.getInt("editor_padding_left", 4).coerceIn(0, 64)
+        editor.rightPaddingDp = prefs.getInt("editor_padding_right", 4).coerceIn(0, 64)
+        editor.showVerticalEdge = prefs.getBoolean("show_vertical_edge", true)
+        applyShowSymbol()
+        editor.tabSize = prefs.getInt("tab_size", 4).coerceIn(1, 16)
+        editor.autoInsertPairs = prefs.getBoolean("auto_insert_pairs", false)
+        editor.highlightThresholdBytes = prefs.getInt("highlight_threshold_mb", 5).coerceIn(1, 50) * 1024L * 1024L
+        startPeriodicBackup()
+        editor.edgeBackgroundMode = prefs.getBoolean("edge_background_mode", false)
+        editor.edgeColumns = EdgeColumns.parse(prefs.getString("edge_columns", null))
     }
 
     override fun onResume() {
         super.onResume()
-        applyTheme(ThemeRegistry.byName(prefs.getString("theme_name", "Default") ?: "Default"))
-        editor.showLineNumbers = prefs.getBoolean("show_line_numbers", true)
-        editor.setHorizontallyScrolling(!prefs.getBoolean("wrap_lines", false))
-        val fontSize = prefs.getInt("font_size", 14)
-        editor.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat().coerceIn(8f, 40f))
+        applyPersistedSettings()
     }
 
     // ---- PluginHost ----
@@ -452,20 +582,31 @@ class MainActivity : AppCompatActivity(), PluginHost {
             val removed = if (beforeCount > 0) pendingRemoved.takeIf { it != null } ?: "" else ""
             val inserted = if (count > 0) s?.subSequence(start, start + count)?.toString() ?: "" else ""
             when {
-                removed.isNotEmpty() && inserted.isEmpty() -> sess.history.pushDelete(start, removed)
-                inserted.isNotEmpty() && removed.isEmpty() -> sess.history.pushInsert(start, inserted)
-                removed.isNotEmpty() && inserted.isNotEmpty() -> sess.history.pushCompound(
-                    buildList {
-                        add(com.notedroidplusplus.app.core.UndoHistory.Edit.Delete(start, removed))
-                        add(com.notedroidplusplus.app.core.UndoHistory.Edit.Insert(start, inserted))
-                    }
-                )
+                removed.isNotEmpty() && inserted.isEmpty() -> {
+                    sess.history.pushDelete(start, removed)
+                    recordAction(MacroRecorder.Action.Delete(start, start + beforeCount))
+                }
+                inserted.isNotEmpty() && removed.isEmpty() -> {
+                    sess.history.pushInsert(start, inserted)
+                    recordAction(MacroRecorder.Action.Insert(start, inserted))
+                }
+                removed.isNotEmpty() && inserted.isNotEmpty() -> {
+                    sess.history.pushCompound(
+                        buildList {
+                            add(com.notedroidplusplus.app.core.UndoHistory.Edit.Delete(start, removed))
+                            add(com.notedroidplusplus.app.core.UndoHistory.Edit.Insert(start, inserted))
+                        }
+                    )
+                    recordAction(MacroRecorder.Action.Delete(start, start + beforeCount))
+                    recordAction(MacroRecorder.Action.Insert(start, inserted))
+                }
             }
             pendingRemoved = null
             pendingStart = -1
         }
         override fun afterTextChanged(s: android.text.Editable?) {
             onTextChanged()
+            maybeShowCompletion()
         }
     }
 
@@ -475,12 +616,26 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun addTab(uri: Uri?, initialText: String?, name: String? = null): TabSession {
         val fileName = name ?: uri?.let { files.displayName(it) } ?: getString(R.string.tab_new, newCounter++)
-        val doc = Document(
-            uri = uri?.toString(),
-            fileName = fileName,
-            text = initialText ?: "",
-            language = if (uri != null || name != null) LanguageMode.fromFileName(fileName) else LanguageMode.NORMAL_TEXT
-        )
+        val doc = if (uri == null && name == null) {
+            // New Document defaults (#43)
+            Document(
+                uri = null,
+                fileName = fileName,
+                text = initialText ?: "",
+                language = runCatching {
+                    LanguageMode.valueOf(prefs.getString("new_doc_language", "NORMAL_TEXT") ?: "NORMAL_TEXT")
+                }.getOrDefault(LanguageMode.NORMAL_TEXT),
+                encoding = runCatching { Charset.forName(prefs.getString("new_doc_encoding", "UTF-8") ?: "UTF-8") }.getOrDefault(Charsets.UTF_8).name(),
+                lineEnding = prefs.getString("new_doc_eol", "\n") ?: "\n"
+            )
+        } else {
+            Document(
+                uri = uri?.toString(),
+                fileName = fileName,
+                text = initialText ?: "",
+                language = if (uri != null || name != null) LanguageMode.fromFileName(fileName) else LanguageMode.NORMAL_TEXT
+            )
+        }
         val tab = binding.tabLayout.newTab()
         tab.setCustomView(R.layout.tab_item)
         val label = tab.customView?.findViewById<android.widget.TextView>(R.id.tab_label)
@@ -507,7 +662,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             val loaded = files.load(uri)
             val fileName = files.displayName(uri)
             loadIntoTab(uri, loaded, fileName, ContentSniffer.detectWithFileName(fileName, loaded.text))
-            recentFiles.add(uri.toString(), fileName)
+            recentFiles.add(uri.toString(), fileName, recentMax)
             refreshTabLabels()
             updateStatus()
         } catch (e: Exception) {
@@ -574,12 +729,17 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.language = s.document.language
         editor.setSelection(s.caret.coerceIn(0, s.document.text.length))
         editor.addTextChangedListener(tw)
+        editor.bookmarks = s.bookmarks
+        editor.textDirection = if (s.textDirectionRtl) android.view.View.TEXT_DIRECTION_ANY_RTL
+        else android.view.View.TEXT_DIRECTION_LTR
+        editor.layoutDirection = if (s.textDirectionRtl) android.view.View.LAYOUT_DIRECTION_RTL else android.view.View.LAYOUT_DIRECTION_LTR
         applyReadOnly(s)
         refreshTabLabels()
         updateStatus()
     }
 
     private fun applyReadOnly(s: TabSession) {
+        editor.readOnlyFlag = s.readOnly
         editor.filters = if (s.readOnly) {
             arrayOf(InputFilter { source, _, _, _, _, _ -> if (source.isNullOrEmpty()) null else "" })
         } else emptyArray()
@@ -602,6 +762,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         if (text != s.document.text) {
             val modified = s.document.uri != null || text.isNotEmpty()
             s.document = s.document.copy(text = text, modified = modified)
+            s.lastModifiedAt = System.currentTimeMillis()
         }
         refreshTabLabels()
         updateStatus()
@@ -616,6 +777,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun updateStatus() {
         val text = editor.text?.toString() ?: ""
+        val s0 = activeSession()
+        s0?.let { it.bookmarks = editor.bookmarks }
         val pos = editor.selectionStart.coerceIn(0, text.length)
         val before = text.substring(0, pos)
         val line = before.count { it == '\n' } + 1
@@ -641,6 +804,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
             s.document.language == LanguageMode.HTML
         ) == PreviewView.Mode.MARKDOWN
         binding.markdownToolbar.visibility = if (md) View.VISIBLE else View.GONE
+        binding.statusInsOvr.text = if (editor.overwriteMode) {
+            getString(R.string.status_ovr)
+        } else {
+            getString(R.string.status_ins)
+        }
     }
 
     // ---- Save / Close ----
@@ -753,6 +921,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun showTabCloseMenu() {
         popup {
             item(getString(R.string.action_close)) { closeTabAt(active) }
+            activeSession()?.let { s -> item(getString(R.string.action_open_containing_folder)) { openContainingFolder(s) } }
             item(getString(R.string.action_close_others)) {
                 val keep = active
                 val dirty = tabs.count { it.document.modified && tabs.indexOf(it) != keep }
@@ -809,7 +978,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
         findPanelOpen = !findPanelOpen
         binding.findPanel.visibility = if (findPanelOpen) View.VISIBLE else View.GONE
         binding.replaceRow.visibility = if (findPanelOpen && replace) View.VISIBLE else View.GONE
-        if (findPanelOpen) binding.findInput.requestFocus()
+        if (findPanelOpen) {
+            if (binding.findInput.text.isNullOrBlank() && prefs.getBoolean("autofill_find", true)) {
+                val sel = getSelection()
+                if (sel.isNotEmpty()) {
+                    val cap = prefs.getInt("find_max_chars", 256).coerceIn(16, 1024)
+                    binding.findInput.setText(sel.take(cap))
+                }
+            }
+            binding.findInput.requestFocus()
+        }
     }
 
     private fun refreshFindOptions() {
@@ -819,6 +997,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
             matchCase = binding.cbMatchCase.isChecked,
             wholeWord = binding.cbWholeWord.isChecked,
             regex = binding.cbRegex.isChecked,
+            extended = binding.cbExtended.isChecked,
+            dotMatchesNewline = binding.cbDotAll.isChecked,
             wrapAround = binding.cbWrapAround.isChecked
         )
     }
@@ -868,6 +1048,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun replaceEverything() {
         refreshFindOptions()
         val (newText, count) = replaceAll(editor.text?.toString() ?: "", findOptions)
+        recordAction(
+            MacroRecorder.Action.ReplaceAll(
+                findOptions.query, findOptions.replaceWith, findOptions.regex, findOptions.matchCase
+            )
+        )
         setEditorText(newText)
         Toast.makeText(this, getString(R.string.replaced_occurrences, count), Toast.LENGTH_SHORT).show()
     }
@@ -882,6 +1067,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .setPositiveButton(R.string.yes) { _, _ ->
                 val line = input.text.toString().toIntOrNull() ?: return@setPositiveButton
                 val offset = TextUtils.lineIndexToOffset(text, (line - 1).coerceIn(0, max - 1))
+                recordAction(MacroRecorder.Action.GoToLine(line))
                 editor.setSelection(offset)
                 editor.requestFocus()
             }
@@ -1017,11 +1203,14 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .show()
     }
 
-    private fun transformCase(op: (String, Int, Int) -> String) {
+    private fun transformCase(kind: String?, op: (String, Int, Int) -> String) {
         val text = editor.text?.toString() ?: return
         val s = editor.selectionStart.coerceAtMost(editor.selectionEnd)
         val e = editor.selectionEnd.coerceAtLeast(editor.selectionStart)
         val replaced = op(text, s, e)
+        if (replaced != text && kind != null) {
+            recordAction(MacroRecorder.Action.TransformCase(kind, s, e))
+        }
         setEditorText(replaced)
         editor.setSelection(s, e)
     }
@@ -1288,6 +1477,583 @@ class MainActivity : AppCompatActivity(), PluginHost {
         }
     }
 
+    private fun showHelpMenu() = popup {
+        item(getString(R.string.help_about)) { showAbout() }
+        item(getString(R.string.help_manual)) { openLink("https://npp-user-manual.org/") }
+        item(getString(R.string.help_project_page)) { openLink("https://github.com/gorzko/notedroid-plus-plus") }
+        item(getString(R.string.help_debug_info)) { showDebugInfo() }
+    }
+
+    private fun showAbout() {
+        val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
+        AlertDialog.Builder(this)
+            .setTitle(R.string.help_about)
+            .setMessage(getString(R.string.about_message, version))
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun openLink(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+        } catch (e: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, R.string.no_browser, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun showDebugInfo() {
+        val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
+        val s = activeSession()
+        syncActiveDocument()
+        val info = buildString {
+            appendLine("App: NoteDroid++ $version")
+            appendLine("Package: $packageName")
+            appendLine("Android SDK: ${android.os.Build.VERSION.SDK_INT} (${android.os.Build.VERSION.RELEASE})")
+            appendLine("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+            appendLine("Theme: ${prefs.getString("theme_name", "Default")}")
+            appendLine("Open tabs: ${tabs.size}")
+            appendLine("Active file: ${s?.document?.fileName ?: "-"}")
+            appendLine("Language: ${s?.document?.language?.displayName ?: "-"}")
+            appendLine("Encoding: ${s?.document?.encoding ?: "-"}")
+            appendLine("EOL: ${s?.document?.lineEnding?.replace("\n", "LF")?.replace("\r", "CR") ?: "-"}")
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.help_debug_info)
+            .setMessage(info)
+            .setPositiveButton(R.string.help_debug_copy) { _, _ -> copyToClipboard(info) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    // ---- Window menu (#53) ----
+
+    private fun showWindowMenu() {
+        popup {
+            tabs.forEachIndexed { i, s ->
+                val marker = when {
+                    i == active -> "✓ "
+                    s.document.modified -> "● "
+                    else -> "    "
+                }
+                item(marker + s.document.fileName) { activateTab(i) }
+            }
+            menu.add(getString(R.string.window_sort_by)).isEnabled = false
+            item(getString(R.string.sort_name_asc)) { sortTabs(WindowSort.Field.NAME, false) }
+            item(getString(R.string.sort_name_desc)) { sortTabs(WindowSort.Field.NAME, true) }
+            item(getString(R.string.sort_type_asc)) { sortTabs(WindowSort.Field.TYPE, false) }
+            item(getString(R.string.sort_type_desc)) { sortTabs(WindowSort.Field.TYPE, true) }
+            item(getString(R.string.sort_size_asc)) { sortTabs(WindowSort.Field.LENGTH, false) }
+            item(getString(R.string.sort_size_desc)) { sortTabs(WindowSort.Field.LENGTH, true) }
+            item(getString(R.string.sort_modified_asc)) { sortTabs(WindowSort.Field.MODIFIED, false) }
+            item(getString(R.string.sort_modified_desc)) { sortTabs(WindowSort.Field.MODIFIED, true) }
+        }
+    }
+
+    private fun sortTabs(field: WindowSort.Field, descending: Boolean) {
+        if (tabs.size < 2) return
+        val activeDoc = activeSession()
+        val ordered = WindowSort.sorted(tabs, { s ->
+            WindowSort.DocInfo(
+                name = s.document.fileName,
+                typeOrdinal = s.document.language.ordinal,
+                length = s.document.text.length,
+                modifiedAt = s.lastModifiedAt
+            )
+        }, field, descending)
+        tabs.clear()
+        tabs.addAll(ordered)
+        rebuildTabLayout()
+        val newActive = ordered.indexOf(activeDoc).coerceAtLeast(0)
+        activateTab(newActive)
+        refreshTabLabels()
+    }
+
+    /** Rebuilds the TabLayout from the sessions list, preserving per-tab views. */
+    private fun rebuildTabLayout() {
+        val layout = binding.tabLayout
+        for (child in layout.touchables) child.setOnLongClickListener(null)
+        layout.removeAllTabs()
+        tabs.forEach { s ->
+            val tab = layout.newTab()
+            tab.setCustomView(R.layout.tab_item)
+            s.tab = tab
+            val label = tab.customView?.findViewById<android.widget.TextView>(R.id.tab_label)
+            val closeBtn = tab.customView?.findViewById<android.widget.ImageView>(R.id.tab_close)
+            label?.text = s.document.fileName
+            closeBtn?.setOnClickListener {
+                val idx = tabs.indexOfFirst { it.tab === tab }
+                if (idx >= 0) closeTabAt(idx)
+            }
+            layout.addTab(tab)
+        }
+        for (child in layout.touchables) {
+            child.setOnLongClickListener { showTabCloseMenu(); true }
+        }
+    }
+
+    // ---- Macro menu (#45) ----
+
+    private val macroRecorderActions = mutableListOf<MacroRecorder.Action>()
+    private var macroRecording = false
+    private val macroStore by lazy { MacroStore(this) }
+
+    private fun recordAction(a: MacroRecorder.Action) {
+        if (macroRecording) macroRecorderActions.add(a)
+    }
+
+    private fun showMacroMenu() {
+        popup {
+            if (macroRecording) {
+                item(getString(R.string.macro_stop)) { stopMacroRecording(save = false) }
+            } else {
+                item(getString(R.string.macro_start)) {
+                    macroRecorderActions.clear()
+                    macroRecording = true
+                    Toast.makeText(this@MainActivity, R.string.macro_start, Toast.LENGTH_SHORT).show()
+                }
+            }
+            item(getString(R.string.macro_playback)) { playbackMacro(macroRecorderActions.toList()) }
+            item(getString(R.string.macro_run_multiple)) { promptMacroRepeat() }
+            item(getString(R.string.macro_save)) { stopMacroRecording(save = true) }
+            val saved = macroStore.list()
+            if (saved.isNotEmpty()) {
+                menu.add(getString(R.string.menu_separator)).isEnabled = false
+                saved.forEach { m ->
+                    item("▶ ${m.name}") { playbackMacro(m.actions) }
+                }
+                saved.forEach { m ->
+                    item(getString(R.string.macro_delete) + ": ${m.name}") {
+                        macroStore.delete(m.name)
+                        Toast.makeText(this@MainActivity, R.string.macro_delete, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopMacroRecording(save: Boolean) {
+        macroRecording = false
+        if (!save) return
+        if (macroRecorderActions.isEmpty()) {
+            Toast.makeText(this, R.string.macro_none, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val input = EditText(this).apply {
+            hint = getString(R.string.macro_name_hint)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.macro_save)
+            .setView(input)
+            .setPositiveButton(R.string.md_link_ok) { _, _ ->
+                val name = input.text.toString().ifBlank { "macro ${System.currentTimeMillis()}" }
+                macroStore.save(MacroStore.Macro(name, macroRecorderActions.toList()))
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun promptMacroRepeat() {
+        val input = EditText(this).apply {
+            hint = getString(R.string.macro_repeat_hint)
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.macro_run_multiple)
+            .setView(input)
+            .setPositiveButton(R.string.md_link_ok) { _, _ ->
+                val n = input.text.toString().toIntOrNull()
+                if (n == null || n < 1 || n > 1000) {
+                    Toast.makeText(this, R.string.macro_invalid_count, Toast.LENGTH_SHORT).show()
+                } else {
+                    var applied = 0
+                    repeat(n) { applied += playbackMacroInternal(macroRecorderActions.toList()) }
+                    Toast.makeText(this, getString(R.string.macro_playing, applied), Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun playbackMacro(actions: List<MacroRecorder.Action>) {
+        if (actions.isEmpty()) {
+            Toast.makeText(this, R.string.macro_none, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val applied = playbackMacroInternal(actions)
+        Toast.makeText(this, getString(R.string.macro_playing, applied), Toast.LENGTH_SHORT).show()
+    }
+
+    /** Replays against the active tab's buffer as one undoable whole-text change. */
+    private fun playbackMacroInternal(actions: List<MacroRecorder.Action>): Int {
+        val s = activeSession() ?: return 0
+        if (s.readOnly) return 0
+        val buf = MacroRecorder.StringBuffer(s.document.text)
+        val applied = MacroRecorder.replay(buf, actions)
+        if (buf.text != s.document.text) setEditorText(buf.text)
+        return applied
+    }
+
+    // ---- Monitoring (tail -f) (#48) ----
+
+    private val monitorHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var monitorRunnable: Runnable? = null
+
+    /** The session whose monitoring toggle started the poll loop (not necessarily active). */
+    private var monitoredSession: TabSession? = null
+
+    private fun toggleMonitoring() {
+        val s = activeSession() ?: return
+        if (s.document.uri == null) {
+            Toast.makeText(this, R.string.need_save_first, Toast.LENGTH_SHORT).show()
+            return
+        }
+        s.monitoring = !s.monitoring
+        if (s.monitoring) {
+            Toast.makeText(this, R.string.monitoring_on, Toast.LENGTH_LONG).show()
+            startMonitoring(s)
+        } else {
+            stopMonitoring()
+        }
+    }
+
+    private fun startMonitoring(session: TabSession) {
+        stopMonitoring()
+        monitoredSession = session
+        val intervalSec = prefs.getInt("monitoring_interval", 2).coerceIn(1, 60)
+        val runnable = object : Runnable {
+            override fun run() {
+                val s = monitoredSession
+                if (s != null && s.monitoring && s.document.uri != null && tabs.contains(s)) {
+                    thread(name = "monitor-check") {
+                        val uri = Uri.parse(s.document.uri!!)
+                        val changed = runCatching {
+                            files.load(uri).text != s.document.text
+                        }.getOrDefault(false)
+                        runOnUiThread {
+                            if (isFinishing || isDestroyed) {
+                                stopMonitoring()
+                            } else {
+                                if (changed && s.monitoring) {
+                                    if (s.document.modified) {
+                                        Toast.makeText(this@MainActivity, R.string.monitoring_changed, Toast.LENGTH_LONG).show()
+                                    } else if (s === activeSession()) {
+                                        reloadActive()
+                                        Toast.makeText(this@MainActivity, R.string.monitoring_reloaded, Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        // monitored but inactive: refresh the buffer in place
+                                        runCatching {
+                                            val loaded = files.load(uri)
+                                            s.document = s.document.copy(
+                                                text = loaded.text,
+                                                encoding = loaded.charset.name(),
+                                                lineEnding = loaded.lineEnding,
+                                                hasBom = loaded.hadBom,
+                                                modified = false
+                                            )
+                                            refreshTabLabels()
+                                        }
+                                    }
+                                }
+                                monitorRunnable?.let { monitorHandler.postDelayed(it, intervalSec * 1000L) }
+                            }
+                        }
+                    }
+                } else {
+                    monitorHandler.postDelayed(this, intervalSec * 1000L)
+                }
+            }
+        }
+        monitorRunnable = runnable
+        monitorHandler.postDelayed(runnable, intervalSec * 1000L)
+    }
+
+    private fun stopMonitoring() {
+        monitorRunnable?.let { monitorHandler.removeCallbacks(it) }
+        monitorRunnable = null
+        monitoredSession = null
+    }
+
+    override fun onDestroy() {
+        stopMonitoring()
+        backupRunnable?.let { backupHandler.removeCallbacks(it) }
+        backupRunnable = null
+        super.onDestroy()
+    }
+
+    // ---- Summary (#41) ----
+
+    private fun showSummary() {
+        val s = activeSession() ?: return
+        syncActiveDocument()
+        val text = s.document.text
+        val lines = text.count { it == '\n' } + if (text.isEmpty()) 0 else 1
+        val words = text.split(Regex("\\s+")).count { it.isNotEmpty() }
+        val msg = buildString {
+            appendLine(s.document.fileName)
+            if (s.document.uri != null) appendLine(getString(R.string.summary_path, s.document.uri!!))
+            appendLine(getString(R.string.summary_bytes, text.toByteArray(Charsets.UTF_8).size))
+            appendLine(getString(R.string.summary_chars, text.length))
+            appendLine(getString(R.string.summary_words, words))
+            append(getString(R.string.summary_line, lines))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.summary_title)
+            .setMessage(msg)
+            .setPositiveButton(R.string.hash_copy) { _, _ -> copyToClipboard(msg) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    // ---- Auto-completion + matched pairs (#46) ----
+
+    private var completionPopup: android.widget.PopupWindow? = null
+    private val autoInsertPairs: Boolean get() = prefs.getBoolean("auto_insert_pairs", false)
+    private val wordCompletionOn: Boolean get() = prefs.getBoolean("word_completion", false)
+    private val functionCompletionOn: Boolean get() = prefs.getBoolean("function_completion", false)
+    private val minCompletionChars: Int get() = prefs.getInt("word_min_chars", 3).coerceIn(1, 10)
+
+    private fun attachCompletionPopup() {
+        editor.setOnKeyListener { v, keyCode, event ->
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                when (keyCode) {
+                    android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+                    android.view.KeyEvent.KEYCODE_TAB -> {
+                        if (completionPopup?.isShowing == true) {
+                            acceptCompletion()
+                            return@setOnKeyListener true
+                        }
+                    }
+                    android.view.KeyEvent.KEYCODE_BACK -> {
+                        if (completionPopup?.isShowing == true) {
+                            dismissCompletion()
+                            return@setOnKeyListener true
+                        }
+                    }
+                }
+            }
+            v.onKeyPreIme(keyCode, event)
+        }
+    }
+
+    private fun dismissCompletion() {
+        completionPopup?.dismiss()
+        completionPopup = null
+    }
+
+    private fun acceptCompletion() {
+        val list = (completionPopup?.contentView as? android.widget.ListView)?.adapter
+            as? android.widget.ArrayAdapter<*> ?: return dismissCompletion()
+        // selected item or first
+        val lv = completionPopup?.contentView as? android.widget.ListView ?: return dismissCompletion()
+        val picked = lv.selectedItemId.toInt()
+        val item = (if (picked >= 0) lv.getItemAtPosition(picked) else lv.getItemAtPosition(0)) ?: return dismissCompletion()
+        insertCompletion(item.toString())
+    }
+
+    private fun insertCompletion(word: String) {
+        dismissCompletion()
+        val text = editor.text?.toString() ?: return
+        val pos = editor.selectionStart
+        val prefix = AutoComplete.prefixEndingAt(text, pos)
+        if (prefix.isEmpty()) return
+        val rest = word.substring(prefix.length)
+        if (rest.isNotEmpty()) editor.text?.insert(pos, rest)
+    }
+
+    /** Shows the completion popup anchored near the caret when a long-enough prefix matches. */
+    private fun maybeShowCompletion() {
+        if (!wordCompletionOn && !functionCompletionOn) return
+        val text = editor.text?.toString() ?: return
+        val pos = editor.selectionStart
+        val prefix = AutoComplete.prefixEndingAt(text, pos)
+        if (prefix.length < minCompletionChars) {
+            dismissCompletion()
+            return
+        }
+        val words = if (wordCompletionOn) AutoComplete.documentWords(text) else emptyList()
+        val keywords = if (functionCompletionOn) SyntaxHighlighter.keywordsFor(language()) else emptyList()
+        val cands = AutoComplete.candidates(prefix, words, keywords, minCompletionChars)
+        if (cands.isEmpty()) {
+            dismissCompletion()
+            return
+        }
+        val lv = android.widget.ListView(this).apply {
+            adapter = android.widget.ArrayAdapter(this@MainActivity, android.R.layout.simple_list_item_1, cands)
+            setOnItemClickListener { _, _, position, _ ->
+                insertCompletion(cands[position])
+            }
+        }
+        val pw = android.widget.PopupWindow(lv, editor.width / 2, 400, true)
+        pw.isOutsideTouchable = true
+        dismissCompletion()
+        completionPopup = pw
+        val gl = editor.layout ?: return
+        val line = gl.getLineForOffset(pos)
+        val y = (gl.getLineBottom(line) - editor.scrollY).coerceAtLeast(0)
+        pw.showAtLocation(editor, android.view.Gravity.NO_GRAVITY, editor.left, editor.top + y)
+    }
+
+    // ---- Search extensions (#37) ----
+
+    private fun countMatchesInDoc() {
+        refreshFindOptions()
+        val text = editor.text?.toString() ?: return
+        val n = com.notedroidplusplus.app.search.countMatches(text, findOptions)
+        Toast.makeText(this, getString(R.string.search_count_result, n), Toast.LENGTH_SHORT).show()
+    }
+
+    /** Find All in current or all opened docs; results dialog jumps to the hit. */
+    private fun findAllInDocs(allTabs: Boolean) {
+        refreshFindOptions()
+        syncActiveDocument()
+        val targets = if (allTabs) tabs.toList() else listOfNotNull(activeSession())
+        val hits = mutableListOf<com.notedroidplusplus.app.search.SearchHit>()
+        targets.forEach { s ->
+            hits.addAll(com.notedroidplusplus.app.search.findAll(s.document.text, findOptions, s.document.fileName, s.document.uri))
+        }
+        if (hits.isEmpty()) {
+            Toast.makeText(this, R.string.toast_no_match, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val labels = hits.map { "${it.file}:${it.line}:${it.column}  ${it.lineText}" }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.search_results_title, hits.size))
+            .setItems(labels.toTypedArray()) { _, which ->
+                val hit = hits[which]
+                val idx = tabs.indexOfFirst { it.document.uri != null && it.document.uri == hit.uri }
+                    .takeIf { it >= 0 } ?: tabs.indexOfFirst { it.document.fileName == hit.file }
+                if (idx >= 0) {
+                    activateTab(idx)
+                    val offset = TextUtils.lineIndexToOffset(tabs[idx].document.text, (hit.line - 1).coerceAtLeast(0))
+                    editor.setSelection((offset + hit.column - 1).coerceIn(0, tabs[idx].document.text.length))
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Mark All: background-span every match in the active document. */
+    private fun markAll() {
+        refreshFindOptions()
+        val text = editor.text?.toString() ?: return
+        val hits = com.notedroidplusplus.app.search.findAll(text, findOptions)
+        if (hits.isEmpty()) {
+            Toast.makeText(this, R.string.toast_no_match, Toast.LENGTH_SHORT).show()
+            return
+        }
+        editor.clearMarks()
+        hits.forEach { h ->
+            val start = h.start.coerceIn(0, text.length)
+            editor.addMark(start, (start + effectiveQueryLength(text, start)).coerceAtMost(text.length))
+        }
+        Toast.makeText(this, getString(R.string.search_marked, hits.size), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun clearMarks() {
+        editor.clearMarks()
+        Toast.makeText(this, R.string.search_marks_cleared, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun effectiveQueryLength(text: String, start: Int): Int {
+        val resolved = findOptions.resolved()
+        return if (resolved.regex) {
+            val re = if (resolved.matchCase) Regex(resolved.query)
+            else Regex(resolved.query, RegexOption.IGNORE_CASE)
+            runCatching { re.find(text, start)?.value?.length ?: 1 }.getOrDefault(1)
+        } else resolved.query.length.coerceAtLeast(1)
+    }
+
+    // ---- Bookmarks (#38) ----
+
+    private fun showBookmarksMenu() = popup {
+        item(getString(R.string.bm_toggle)) { toggleBookmark() }
+        item(getString(R.string.bm_next)) { gotoBookmark(forward = true) }
+        item(getString(R.string.bm_prev)) { gotoBookmark(forward = false) }
+        item(getString(R.string.bm_clear)) {
+            activeSession()?.let { it.bookmarks = emptySet() }
+            editor.bookmarks = emptySet()
+        }
+        item(getString(R.string.bm_invert)) {
+            val s = activeSession() ?: return@item
+            val lines = s.document.text.count { it == '\n' } + 1
+            s.bookmarks = com.notedroidplusplus.app.core.Bookmarks.invert(s.bookmarks, lines)
+            editor.bookmarks = s.bookmarks
+        }
+        item(getString(R.string.bm_copy)) { copyBookmarkedLines(cut = false) }
+        item(getString(R.string.bm_cut)) { copyBookmarkedLines(cut = true) }
+        item(getString(R.string.bm_paste)) { pasteToBookmarkedLines() }
+    }
+
+    private fun currentLineIndex(): Int {
+        val text = editor.text?.toString() ?: ""
+        return text.substring(0, editor.selectionStart.coerceIn(0, text.length)).count { it == '\n' }
+    }
+
+    private fun toggleBookmark() {
+        val s = activeSession() ?: return
+        val line = currentLineIndex()
+        s.bookmarks = com.notedroidplusplus.app.core.Bookmarks.toggle(s.bookmarks, line)
+        editor.bookmarks = s.bookmarks
+    }
+
+    private fun gotoBookmark(forward: Boolean) {
+        val s = activeSession() ?: return
+        val line = currentLineIndex()
+        val target = if (forward) com.notedroidplusplus.app.core.Bookmarks.next(s.bookmarks, line)
+        else com.notedroidplusplus.app.core.Bookmarks.prev(s.bookmarks, line)
+        if (target < 0) {
+            Toast.makeText(this, R.string.no_bookmarks, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val text = s.document.text
+        val offset = TextUtils.lineIndexToOffset(text, target)
+        editor.setSelection(offset.coerceIn(0, text.length))
+    }
+
+    private fun copyBookmarkedLines(cut: Boolean) {
+        val s = activeSession() ?: return
+        if (s.bookmarks.isEmpty()) {
+            Toast.makeText(this, R.string.no_bookmarks, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (isEditorLocked()) return
+        syncActiveDocument()
+        val eol = s.document.lineEnding
+        val block = com.notedroidplusplus.app.core.Bookmarks.collectLines(s.document.text, eol, s.bookmarks)
+        copyToClipboard(block)
+        if (cut) {
+            setEditorText(com.notedroidplusplus.app.core.Bookmarks.removeLines(s.document.text, eol, s.bookmarks))
+            s.bookmarks = emptySet()
+            editor.bookmarks = emptySet()
+        }
+    }
+
+    private fun pasteToBookmarkedLines() {
+        val s = activeSession() ?: return
+        if (s.bookmarks.isEmpty()) {
+            Toast.makeText(this, R.string.no_bookmarks, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (isEditorLocked()) return
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = cm.primaryClip?.getItemAt(0)?.text?.toString()
+        if (clip.isNullOrEmpty()) {
+            Toast.makeText(this, R.string.no_bookmarks, Toast.LENGTH_SHORT).show()
+            return
+        }
+        syncActiveDocument()
+        val eol = s.document.lineEnding
+        var text = s.document.text
+        // replace each bookmarked line's content with the clip, in reverse to keep offsets stable
+        s.bookmarks.sortedDescending().forEach { line ->
+            val start = TextUtils.lineIndexToOffset(text, line)
+            val lineText = com.notedroidplusplus.app.core.TextUtils.lineAt(text, line)
+            val end = (start + lineText.length).coerceAtMost(text.length)
+            text = text.substring(0, start) + clip + text.substring(end)
+        }
+        setEditorText(text)
+    }
+
     // ---- Menus ----
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -1300,6 +2066,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
         menu.add(0, 7, 0, R.string.menu_tools)
         menu.add(0, 8, 0, R.string.menu_plugins)
         menu.add(0, 9, 0, R.string.menu_settings)
+        menu.add(0, 10, 0, R.string.menu_macro)
+        menu.add(0, 11, 0, R.string.menu_window)
+        menu.add(0, 12, 0, R.string.menu_help)
         return true
     }
 
@@ -1314,6 +2083,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
             7 -> showToolsMenu()
             8 -> showPluginsMenu()
             9 -> startActivity(Intent(this, SettingsActivity::class.java))
+            10 -> showMacroMenu()
+            11 -> showWindowMenu()
+            12 -> showHelpMenu()
         }
         return true
     }
@@ -1401,16 +2173,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun showConvertCaseMenu() = popup {
-        item(getString(R.string.action_uppercase)) { transformCase { t, s, e -> TextUtils.toUpper(t, s, e) } }
-        item(getString(R.string.action_lowercase)) { transformCase { t, s, e -> TextUtils.toLower(t, s, e) } }
-        item(getString(R.string.action_titlecase)) { transformCase { t, s, e -> TextUtils.titleCase(t, s, e) } }
-        item(getString(R.string.op_proper)) { transformCase { t, s, e -> TextUtils.properCase(t, s, e, blend = false) } }
-        item(getString(R.string.op_proper_blend)) { transformCase { t, s, e -> TextUtils.properCase(t, s, e, blend = true) } }
-        item(getString(R.string.op_sentence)) { transformCase { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = false) } }
-        item(getString(R.string.op_sentence_blend)) { transformCase { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = true) } }
-        item(getString(R.string.action_toggle_case)) { transformCase { t, s, e -> TextUtils.toggleCase(t, s, e) } }
-        item(getString(R.string.op_invert)) { transformCase { t, s, e -> TextUtils.invertCase(t, s, e) } }
-        item(getString(R.string.op_random_case)) { transformCase { t, s, e -> TextUtils.randomCase(t, s, e, java.util.Random()) } }
+        item(getString(R.string.action_uppercase)) { transformCase("upper") { t, s, e -> TextUtils.toUpper(t, s, e) } }
+        item(getString(R.string.action_lowercase)) { transformCase("lower") { t, s, e -> TextUtils.toLower(t, s, e) } }
+        item(getString(R.string.action_titlecase)) { transformCase("title") { t, s, e -> TextUtils.titleCase(t, s, e) } }
+        item(getString(R.string.op_proper)) { transformCase("proper") { t, s, e -> TextUtils.properCase(t, s, e, blend = false) } }
+        item(getString(R.string.op_proper_blend)) { transformCase("proper-blend") { t, s, e -> TextUtils.properCase(t, s, e, blend = true) } }
+        item(getString(R.string.op_sentence)) { transformCase("sentence") { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = false) } }
+        item(getString(R.string.op_sentence_blend)) { transformCase("sentence-blend") { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = true) } }
+        item(getString(R.string.action_toggle_case)) { transformCase("toggle") { t, s, e -> TextUtils.toggleCase(t, s, e) } }
+        item(getString(R.string.op_invert)) { transformCase("toggle") { t, s, e -> TextUtils.invertCase(t, s, e) } }
+        item(getString(R.string.op_random_case)) { transformCase(null) { t, s, e -> TextUtils.randomCase(t, s, e, java.util.Random()) } }
     }
 
     private fun showBlankOpsMenu() = popup {
@@ -1452,25 +2224,47 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun showSearchMenu() = popup {
         item(getString(R.string.action_find)) { toggleFindPanel(false) }
         item(getString(R.string.action_replace)) { toggleFindPanel(true) }
+        item(getString(R.string.search_count)) { countMatchesInDoc() }
+        item(getString(R.string.search_find_all_current)) { findAllInDocs(allTabs = false) }
+        item(getString(R.string.search_find_all_opened)) { findAllInDocs(allTabs = true) }
+        item(getString(R.string.search_mark_all)) { markAll() }
+        item(getString(R.string.search_clear_marks)) { clearMarks() }
+        item(getString(R.string.menu_bookmarks)) { showBookmarksMenu() }
         item(getString(R.string.action_goto)) { gotoLine() }
         item(getString(R.string.action_find_in_files)) {
             refreshFindOptions()
+            syncActiveDocument()
+            val buffers = arrayListOf<String>()
+            tabs.filter { it.document.uri != null }.forEach {
+                buffers.add(it.document.uri!!)
+                buffers.add(it.document.text)
+            }
             fifLauncher.launch(
                 Intent(this@MainActivity, FindInFilesActivity::class.java)
                     .putExtra(FindInFilesActivity.EXTRA_QUERY, binding.findInput.text.toString())
+                    .putStringArrayListExtra(FindInFilesActivity.EXTRA_OPEN_BUFFERS, buffers)
             )
         }
     }
 
+    private val recentMax: Int get() = RecentFilesSettings.parseMax(prefs.getString("recent_max", null))
+    private val recentMode: RecentFilesSettings.DisplayMode
+        get() = if (prefs.getString("recent_display", "name") == "path") RecentFilesSettings.DisplayMode.FULL_PATH
+        else RecentFilesSettings.DisplayMode.NAME_ONLY
+
     private fun showRecentMenu() {
-        val recents = recentFiles.list()
+        val recents = RecentFilesSettings.trim(recentFiles.list(), recentMax)
         if (recents.isEmpty()) {
             Toast.makeText(this, R.string.no_recent_files, Toast.LENGTH_SHORT).show()
             return
         }
         popup {
             recents.forEach { entry ->
-                item(entry.name) { openRecent(entry.uri) }
+                item(RecentFilesSettings.label(entry, recentMode)) { openRecent(entry.uri) }
+            }
+            item(getString(R.string.recent_clear)) {
+                recentFiles.clear()
+                Toast.makeText(this@MainActivity, R.string.recent_cleared, Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -1496,6 +2290,162 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.show_line_numbers)) { editor.showLineNumbers = !editor.showLineNumbers }
         item(getString(R.string.action_zoom_in)) { zoom(1.25f) }
         item(getString(R.string.action_zoom_out)) { zoom(0.8f) }
+        item(getString(R.string.action_restore_zoom)) { restoreDefaultZoom() }
+        item(getString(R.string.action_view_external)) { viewCurrentFileExternally() }
+        item(getString(R.string.action_monitoring)) { toggleMonitoring() }
+        item(getString(R.string.action_summary)) { showSummary() }
+        item(getString(R.string.menu_show_symbol)) { showSymbolMenu() }
+        item(getString(R.string.action_fullscreen)) { toggleFullScreen(distractionFree = false) }
+        item(getString(R.string.action_distraction_free)) { toggleFullScreen(distractionFree = true) }
+        item(getString(R.string.action_rtl)) { setTextDirection(android.view.View.LAYOUT_DIRECTION_RTL) }
+        item(getString(R.string.action_ltr)) { setTextDirection(android.view.View.LAYOUT_DIRECTION_LTR) }
+    }
+
+    private fun showSymbolMenu() {
+        popup {
+            fun toggled(key: String): Boolean = prefs.getBoolean(key, false)
+            fun flip(key: String, default: Boolean = false) {
+                prefs.edit().putBoolean(key, !toggled(key)).apply()
+                applyShowSymbol()
+            }
+            item(check(getString(R.string.symbol_space_tab), toggled("symbol_space_tab"))) { flip("symbol_space_tab") }
+            item(check(getString(R.string.symbol_eol), toggled("symbol_eol"))) { flip("symbol_eol") }
+            item(check(getString(R.string.symbol_non_printing), toggled("symbol_non_printing"))) { flip("symbol_non_printing") }
+            item(check(getString(R.string.symbol_control), toggled("symbol_control"))) { flip("symbol_control") }
+            item(check(getString(R.string.symbol_indent_guide), toggled("symbol_indent_guide"))) { flip("symbol_indent_guide") }
+            item(check(getString(R.string.symbol_wrap), toggled("symbol_wrap"))) { flip("symbol_wrap") }
+            item(check(getString(R.string.symbol_all), toggled("symbol_all"))) { flip("symbol_all") }
+        }
+    }
+
+    private fun check(label: String, on: Boolean) = if (on) "✓ $label" else "    $label"
+
+    private fun applyShowSymbol() {
+        editor.showSymbolFlags = ShowSymbolFlags.fromPrefs(
+            prefs.getBoolean("symbol_space_tab", false),
+            prefs.getBoolean("symbol_eol", false),
+            prefs.getBoolean("symbol_non_printing", false),
+            prefs.getBoolean("symbol_control", false),
+            prefs.getBoolean("symbol_indent_guide", false),
+            prefs.getBoolean("symbol_wrap", false),
+            prefs.getBoolean("symbol_all", false)
+        )
+    }
+
+    // ---- Full-screen / RTL (#41) ----
+
+    private var fullScreen = false
+
+    private fun toggleFullScreen(distractionFree: Boolean) {
+        fullScreen = !fullScreen
+        val window = window
+        val decor = window.decorView
+        if (fullScreen) {
+            @Suppress("DEPRECATION")
+            decor.systemUiVisibility = (
+                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                )
+            binding.appBar.visibility = View.GONE
+            if (distractionFree) {
+                binding.statusBar.visibility = View.GONE
+                binding.tabLayout.visibility = View.GONE
+            }
+            val exit = android.widget.Button(this).apply {
+                text = getString(R.string.action_exit_fs)
+                setOnClickListener { toggleFullScreen(distractionFree) }
+            }
+            (binding.root as? android.view.ViewGroup)?.addView(exit, androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams(
+                androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams.WRAP_CONTENT,
+                androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL })
+            exit.tag = "fs_exit"
+        } else {
+            @Suppress("DEPRECATION")
+            decor.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_VISIBLE
+            binding.appBar.visibility = View.VISIBLE
+            binding.statusBar.visibility = View.VISIBLE
+            binding.tabLayout.visibility = View.VISIBLE
+            (binding.root as? android.view.ViewGroup)?.findViewWithTag<android.widget.Button>("fs_exit")?.let {
+                (binding.root as android.view.ViewGroup).removeView(it)
+            }
+        }
+    }
+
+    private fun setTextDirection(direction: Int) {
+        val s = activeSession() ?: return
+        s.textDirectionRtl = direction == android.view.View.LAYOUT_DIRECTION_RTL
+        editor.textDirection = if (s.textDirectionRtl) android.view.View.TEXT_DIRECTION_ANY_RTL
+        else android.view.View.TEXT_DIRECTION_LTR
+        editor.layoutDirection = direction
+    }
+
+    private fun restoreDefaultZoom() {
+        editor.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
+        prefs.edit().putInt("font_size", 14).apply()
+        editor.updateGutterPublic()
+        editor.rehighlight()
+    }
+
+    // ---- External app view + containing folder (#49) ----
+
+    private fun viewCurrentFileExternally() {
+        val s = activeSession()
+        val uriString = s?.document?.uri
+        if (uriString == null) {
+            Toast.makeText(this, R.string.need_save_first, Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uriString)).apply {
+                setDataAndType(Uri.parse(uriString), mimeFor(s.document.fileName))
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(intent)
+        } catch (e: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, R.string.error_no_external_app, Toast.LENGTH_LONG).show()
+        } catch (e: SecurityException) {
+            Toast.makeText(this, getString(R.string.error_load_failed, e.message), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun openContainingFolder(s: TabSession) {
+        val uriString = s.document.uri
+        if (uriString == null) {
+            Toast.makeText(this, R.string.need_save_first, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val docUri = Uri.parse(uriString)
+        val parent = DocumentFile.fromSingleUri(this, docUri)?.parentFile
+        if (parent == null) {
+            // Derive the tree/document parent URI for providers exposing a hierarchy.
+            val treeUri = runCatching {
+                Uri.parse(docUri.toString().substringBeforeLast('/'))
+            }.getOrNull()
+            if (treeUri == null) {
+                Toast.makeText(this, R.string.error_no_folder_view, Toast.LENGTH_LONG).show()
+                return
+            }
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, treeUri).apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                })
+            } catch (e: android.content.ActivityNotFoundException) {
+                Toast.makeText(this, R.string.error_no_folder_view, Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, parent.uri).apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            })
+        } catch (e: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, R.string.error_no_folder_view, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun showThemeMenu() {
@@ -1548,6 +2498,151 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.action_minify)) { minify() }
         item(getString(R.string.action_validate_xml)) { validateXml() }
         item(getString(R.string.action_preview)) { preview() }
+        item(getString(R.string.action_character_panel)) { showCharacterPanel() }
+        menu.add(getString(R.string.menu_hashes)).isEnabled = false
+        HashTool.Algorithm.entries.forEach { alg ->
+            item(alg.display) { showHashMenu(alg) }
+        }
+    }
+
+    private fun showHashMenu(alg: HashTool.Algorithm) {
+        popup {
+            item(getString(R.string.hash_generate)) { promptHashText(alg) }
+            item(getString(R.string.hash_from_files)) {
+            pendingHashAlgorithm = alg
+            hashFilesLauncher.launch(arrayOf("*/*"))
+        }
+            item(getString(R.string.hash_from_selection)) {
+                val sel = getSelection()
+                if (sel.isEmpty()) {
+                    Toast.makeText(this@MainActivity, R.string.hash_no_selection, Toast.LENGTH_SHORT).show()
+                } else {
+                    copyToClipboard(HashTool.hashText(alg, sel))
+                    Toast.makeText(this@MainActivity, R.string.hash_copied, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun promptHashText(alg: HashTool.Algorithm) {
+        val input = EditText(this).apply {
+            hint = getString(R.string.hash_input_hint)
+            minLines = 2
+            gravity = android.view.Gravity.TOP
+        }
+        AlertDialog.Builder(this)
+            .setTitle(alg.display)
+            .setView(input)
+            .setPositiveButton(R.string.hash_copy) { _, _ ->
+                val digest = HashTool.hashText(alg, input.text.toString())
+                copyToClipboard(digest)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private val hashFilesLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            if (uris.isNullOrEmpty()) return@registerForActivityResult
+            val alg = pendingHashAlgorithm ?: return@registerForActivityResult
+            thread(name = "hash-files") {
+                val lines = uris.map { uri ->
+                    val name = runCatching { files.displayName(uri) }.getOrDefault(uri.lastPathSegment ?: "?")
+                    val digest = runCatching {
+                        contentResolver.openInputStream(uri)?.use { HashTool.hashStream(alg, it) }
+                    }.getOrNull()
+                    if (digest == null) "$name: ${getString(R.string.error_load_failed, "?")}"
+                    else "$name: $digest"
+                }
+                runOnUiThread {
+                    pendingHashAlgorithm = null
+                    AlertDialog.Builder(this)
+                        .setTitle(alg.display)
+                        .setMessage(lines.joinToString("\n"))
+                        .setPositiveButton(R.string.hash_copy) { _, _ ->
+                            copyToClipboard(lines.joinToString("\n"))
+                        }
+                        .setNegativeButton(R.string.cancel, null)
+                        .show()
+                }
+            }
+        }
+
+    private var pendingHashAlgorithm: HashTool.Algorithm? = null
+
+    // ---- Character Panel (#57) ----
+
+    private fun showCharacterPanel() {
+        val s = activeSession()
+        val charset = runCatching { Charset.forName(s?.document?.encoding ?: "UTF-8") }.getOrDefault(Charsets.UTF_8)
+        val rows = CharacterTable.rows(charset)
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(24, 16, 24, 16)
+        }
+        val unicodeInput = EditText(this).apply {
+            hint = getString(R.string.char_unicode_hint)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            maxLines = 1
+        }
+        layout.addView(android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            addView(unicodeInput, android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(android.widget.Button(this@MainActivity).apply {
+                text = getString(R.string.char_unicode_insert)
+                setOnClickListener {
+                    val cp = CharacterTable.parseCodepoint(unicodeInput.text.toString())
+                    if (cp == null) {
+                        Toast.makeText(this@MainActivity, R.string.char_unicode_invalid, Toast.LENGTH_SHORT).show()
+                    } else {
+                        insertAtCaret(CharacterTable.codepointToChar(cp))
+                        Toast.makeText(this@MainActivity, getString(R.string.char_inserted, CharacterTable.codepointToChar(cp)), Toast.LENGTH_SHORT).show()
+                    }
+                }
+            })
+        }, android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+        val grid = android.widget.GridView(this).apply {
+            numColumns = 4
+            adapter = object : android.widget.BaseAdapter() {
+                override fun getCount() = rows.size * 3
+                override fun getItem(position: Int) = position
+                override fun getItemId(position: Int) = position.toLong()
+                override fun getView(position: Int, convertView: android.view.View?, parent: android.view.ViewGroup): android.view.View {
+                    val tv = (convertView as? android.widget.TextView) ?: android.widget.TextView(this@MainActivity).apply {
+                        gravity = android.view.Gravity.CENTER
+                        setPadding(8, 8, 8, 8)
+                        textSize = 13f
+                    }
+                    val row = rows[position / 3]
+                    when (position % 3) {
+                        0 -> tv.text = "${row.value} ${row.hex} ${row.char}"
+                        1 -> tv.text = row.htmlName ?: row.htmlDecimal
+                        2 -> tv.text = row.htmlHex
+                    }
+                    return tv
+                }
+            }
+            setOnItemClickListener { _, _, position, _ ->
+                val row = rows[position / 3]
+                val insert = when (position % 3) {
+                    0 -> row.char
+                    1 -> row.htmlName ?: row.htmlDecimal
+                    else -> row.htmlHex
+                }
+                insertAtCaret(insert)
+                Toast.makeText(this@MainActivity, getString(R.string.char_inserted, insert), Toast.LENGTH_SHORT).show()
+            }
+        }
+        layout.addView(grid, android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.char_panel_title, charset.name()))
+            .setView(layout)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     private fun validateXml() {

@@ -25,7 +25,8 @@ class SessionStore(private val context: Context) {
                     "encoding" to Json.Value.Str(tab.encoding),
                     "lineEnding" to Json.Value.Str(tab.lineEnding),
                     "modified" to Json.Value.Bool(tab.modified),
-                    "caret" to Json.Value.Num(tab.caret.toString())
+                    "caret" to Json.Value.Num(tab.caret.toString()),
+                    "bookmarks" to Json.Value.Arr(tab.bookmarks.map { Json.Value.Num(it.toString()) })
                 )
             )
         })
@@ -50,7 +51,8 @@ class SessionStore(private val context: Context) {
                     encoding = str("encoding").ifBlank { "UTF-8" },
                     lineEnding = str("lineEnding").ifBlank { "\n" },
                     modified = bool("modified"),
-                    caret = num("caret")
+                    caret = num("caret"),
+                    bookmarks = (obj.entries.firstOrNull { it.first == "bookmarks" }?.second as? Json.Value.Arr)?.items?.mapNotNull { (it as? Json.Value.Num)?.raw?.toIntOrNull() } ?: emptyList()
                 )
             }
         }.getOrNull()
@@ -68,6 +70,7 @@ class SessionStore(private val context: Context) {
         val encoding: String,
         val lineEnding: String,
         val modified: Boolean,
-        val caret: Int
+        val caret: Int,
+        val bookmarks: List<Int> = emptyList()
     )
 }

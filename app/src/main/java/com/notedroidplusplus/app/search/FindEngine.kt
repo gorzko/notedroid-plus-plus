@@ -8,6 +8,8 @@ data class FindOptions(
     val wholeWord: Boolean = false,
     val wrapAround: Boolean = true,
     val regex: Boolean = false,
+    val extended: Boolean = false,
+    val dotMatchesNewline: Boolean = false,
     val direction: Direction = Direction.DOWN
 ) {
     enum class Direction { UP, DOWN }
@@ -15,11 +17,42 @@ data class FindOptions(
     fun matches(text: String): Boolean = findNext(text, 0, this) >= 0
 }
 
-fun findNext(text: String, start: Int, opts: FindOptions): Int {
+/** Resolves the effective query/replace strings (extended-mode unescaping). */
+fun FindOptions.resolved(): FindOptions =
+    if (!extended) this
+    else copy(query = ExtendedMode.unescape(query), replaceWith = ExtendedMode.unescape(replaceWith))
+
+/** Count of all matches of [opts] in [text]. */
+fun countMatches(text: String, opts: FindOptions): Int {
+    val o = opts.resolved()
+    if (o.query.isEmpty()) return 0
+    if (o.regex) {
+        return runCatching { o.buildRegex().findAll(text).count() }.getOrDefault(0)
+    }
+    var count = 0
+    var i = 0
+    while (i <= text.length) {
+        val idx = text.indexOf(o.query, i, ignoreCase = !o.matchCase)
+        if (idx < 0) break
+        if (!o.wholeWord || isWholeWordAt(text, idx, o.query.length)) count++
+        i = idx + 1
+    }
+    return count
+}
+
+private fun FindOptions.buildRegex(): Regex = when {
+    matchCase && dotMatchesNewline -> Regex(query, RegexOption.DOT_MATCHES_ALL)
+    matchCase -> Regex(query)
+    dotMatchesNewline -> Regex(query, setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    else -> Regex(query, RegexOption.IGNORE_CASE)
+}
+
+fun findNext(text: String, start: Int, optsIn: FindOptions): Int {
+    val opts = optsIn.resolved()
     if (opts.query.isEmpty()) return -1
     if (opts.regex) {
         return try {
-            val re = if (opts.matchCase) Regex(opts.query) else Regex(opts.query, RegexOption.IGNORE_CASE)
+            val re = opts.buildRegex()
             val fwd = re.find(text, start)?.range?.first
             val wrapped = if (opts.wrapAround) re.find(text)?.range?.first else null
             fwd ?: wrapped ?: -1
@@ -48,11 +81,12 @@ private fun findOnceWrapped(text: String, opts: FindOptions): Int {
     return idx
 }
 
-fun findPrev(text: String, from: Int, opts: FindOptions): Int {
+fun findPrev(text: String, from: Int, optsIn: FindOptions): Int {
+    val opts = optsIn.resolved()
     if (opts.query.isEmpty()) return -1
     if (opts.regex) {
         return try {
-            val re = if (opts.matchCase) Regex(opts.query) else Regex(opts.query, RegexOption.IGNORE_CASE)
+            val re = opts.buildRegex()
             val starts = re.findAll(text).map { it.range.first }.toList()
             val hit = starts.lastOrNull { it < from } ?: if (opts.wrapAround) starts.lastOrNull() else null
             hit ?: -1
@@ -73,13 +107,14 @@ fun findPrev(text: String, from: Int, opts: FindOptions): Int {
 }
 
 fun replaceAll(text: String, opts: FindOptions): Pair<String, Int> {
-    if (opts.query.isEmpty()) return text to 0
+    val o = opts.resolved()
+    if (o.query.isEmpty()) return text to 0
     var count = 0
-    if (opts.regex) {
+    if (o.regex) {
         return try {
-            val re = if (opts.matchCase) Regex(opts.query) else Regex(opts.query, RegexOption.IGNORE_CASE)
+            val re = o.buildRegex()
             count = re.findAll(text).count()
-            re.replace(text, opts.replaceWith) to count
+            re.replace(text, o.replaceWith) to count
         } catch (_: Exception) {
             text to 0
         }
@@ -87,15 +122,15 @@ fun replaceAll(text: String, opts: FindOptions): Pair<String, Int> {
     val sb = StringBuilder()
     var i = 0
     while (i <= text.length) {
-        val idx = text.indexOf(opts.query, i, ignoreCase = !opts.matchCase)
+        val idx = text.indexOf(o.query, i, ignoreCase = !o.matchCase)
         if (idx < 0) break
-        if (opts.wholeWord && !isWholeWordAt(text, idx, opts.query.length)) {
+        if (o.wholeWord && !isWholeWordAt(text, idx, o.query.length)) {
             sb.append(text[i]); i++
             continue
         }
         sb.append(text, i, idx)
-        sb.append(opts.replaceWith)
-        i = idx + opts.query.length
+        sb.append(o.replaceWith)
+        i = idx + o.query.length
         count++
     }
     sb.append(text, i, text.length)

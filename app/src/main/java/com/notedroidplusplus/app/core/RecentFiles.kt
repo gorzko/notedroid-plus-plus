@@ -8,14 +8,15 @@ import com.notedroidplusplus.app.tools.Json
  * Persists the most recently opened files (URI + display name).
  * Stored as a JSON array so names containing '|' or newlines stay intact.
  */
-class RecentFiles(context: Context, private val max: Int = 10) {
+class RecentFiles(context: Context, private var max: Int = 10) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("notedroid_recent", Context.MODE_PRIVATE)
 
     data class Entry(val uri: String, val name: String)
 
-    fun add(uri: String, name: String) {
+    fun add(uri: String, name: String, maxEntries: Int = max) {
+        max = maxEntries.coerceIn(1, RecentFilesSettings.MAX_LIMIT)
         val list = list().filterNot { it.uri == uri }.toMutableList()
         list.add(0, Entry(uri, name))
         save(list.take(max))
@@ -43,6 +44,10 @@ class RecentFiles(context: Context, private val max: Int = 10) {
 
     fun remove(uri: String) {
         save(list().filterNot { it.uri == uri })
+    }
+
+    fun clear() {
+        save(emptyList())
     }
 
     private fun save(entries: List<Entry>) {

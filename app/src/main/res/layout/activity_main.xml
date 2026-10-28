@@ -325,6 +325,48 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/wrap_around" />
+
+                <CheckBox
+                    android:id="@+id/cb_extended"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/extended_mode" />
+
+                <CheckBox
+                    android:id="@+id/cb_dot_all"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/dot_matches_newline" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btn_count"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:text="@string/search_count" />
+
+                <Button
+                    android:id="@+id/btn_find_all"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:text="@string/search_find_all_current" />
+
+                <Button
+                    android:id="@+id/btn_mark_all"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:text="@string/search_mark_all" />
             </LinearLayout>
         </LinearLayout>
 
@@ -355,6 +397,16 @@
                 android:layout_width="0dp"
                 android:layout_height="1dp"
                 android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/status_ins_ovr"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:textSize="12sp"
+                android:text="@string/status_ins"
+                android:clickable="true"
+                android:focusable="true" />
 
             <TextView
                 android:id="@+id/status_encoding"

@@ -15,6 +15,10 @@ import com.notedroidplusplus.app.TokenKind
  */
 object SyntaxHighlighter {
 
+    /** Public read access for auto-completion keyword candidates. */
+    fun keywordsFor(mode: LanguageMode): List<String> =
+        (KEYWORDS[mode] ?: emptySet()).sorted()
+
     private val KEYWORDS: Map<LanguageMode, Set<String>> = mapOf(
         LanguageMode.C to setOf(
             "auto", "break", "case", "const", "continue", "default", "do", "else", "enum",

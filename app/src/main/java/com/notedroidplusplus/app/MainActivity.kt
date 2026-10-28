@@ -28,6 +28,7 @@ import com.notedroidplusplus.app.core.SessionStore
 import com.notedroidplusplus.app.core.TextUtils
 import com.notedroidplusplus.app.databinding.ActivityMainBinding
 import com.notedroidplusplus.app.editing.CodeEditText
+import com.notedroidplusplus.app.editing.ContentSniffer
 import com.notedroidplusplus.app.files.FindInFilesActivity
 import com.notedroidplusplus.app.plugins.PluginHost
 import com.notedroidplusplus.app.plugins.PluginImportActivity
@@ -134,12 +135,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 )
             }
             val loaded = files.load(uri)
-            val session = addTab(uri, loaded.text)
-            session.document = session.document.copy(
-                encoding = loaded.charset.name(),
-                lineEnding = loaded.lineEnding,
-                hasBom = loaded.hadBom
-            )
+            val fileName = files.displayName(uri)
+            val session = loadIntoTab(uri, loaded, fileName, ContentSniffer.detectWithFileName(fileName, loaded.text))
             val offset = TextUtils.lineIndexToOffset(session.document.text, (line - 1).coerceAtLeast(0))
             session.caret = offset
             editor.setSelection(offset.coerceAtMost(session.document.text.length))
@@ -445,18 +442,58 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 )
             }
             val loaded = files.load(uri)
-            val session = addTab(uri, loaded.text)
-            session.document = session.document.copy(
-                encoding = loaded.charset.name(),
-                lineEnding = loaded.lineEnding,
-                hasBom = loaded.hadBom
-            )
-            recentFiles.add(uri.toString(), session.document.fileName)
+            val fileName = files.displayName(uri)
+            loadIntoTab(uri, loaded, fileName, ContentSniffer.detectWithFileName(fileName, loaded.text))
+            recentFiles.add(uri.toString(), fileName)
             refreshTabLabels()
             updateStatus()
         } catch (e: Exception) {
             Toast.makeText(this, getString(R.string.error_load_failed, e.message), Toast.LENGTH_LONG).show()
         }
+    }
+
+    /**
+     * Notepad++ behavior: opening a file while the active tab is an unmodified
+     * empty document replaces that document in-place; otherwise a new tab is
+     * created. The tab is always labeled with the file name.
+     */
+    private fun loadIntoTab(
+        uri: Uri,
+        loaded: FileManager.LoadedFile,
+        fileName: String,
+        language: LanguageMode
+    ): TabSession {
+        val current = activeSession()
+        val reuse = current != null && current.document.uri == null &&
+            !current.document.modified && current.document.text.isEmpty()
+        if (reuse) {
+            current!!.document = current.document.copy(
+                uri = uri.toString(),
+                fileName = fileName,
+                text = loaded.text,
+                language = language,
+                encoding = loaded.charset.name(),
+                lineEnding = loaded.lineEnding,
+                hasBom = loaded.hadBom,
+                modified = false
+            )
+            editor.removeTextChangedListener(tw)
+            editor.setText(loaded.text)
+            editor.language = language
+            editor.setSelection(0)
+            editor.addTextChangedListener(tw)
+            refreshTabLabels()
+            return current
+        }
+        val session = addTab(uri, loaded.text)
+        session.document = session.document.copy(
+            fileName = fileName,
+            language = language,
+            encoding = loaded.charset.name(),
+            lineEnding = loaded.lineEnding,
+            hasBom = loaded.hadBom
+        )
+        return session
     }
 
     private fun activateTab(index: Int) {
@@ -955,12 +992,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
         val uri = Uri.parse(uriString)
         try {
             val loaded = files.load(uri)
-            val session = addTab(uri, loaded.text)
-            session.document = session.document.copy(
-                encoding = loaded.charset.name(),
-                lineEnding = loaded.lineEnding,
-                hasBom = loaded.hadBom
-            )
+            val fileName = files.displayName(uri)
+            loadIntoTab(uri, loaded, fileName, ContentSniffer.detectWithFileName(fileName, loaded.text))
             refreshTabLabels()
             updateStatus()
         } catch (e: Exception) {

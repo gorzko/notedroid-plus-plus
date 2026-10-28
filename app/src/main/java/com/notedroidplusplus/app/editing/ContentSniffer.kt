@@ -88,10 +88,39 @@ object ContentSniffer {
         val ext = fileName.substringAfterLast('.', "").lowercase()
         val base = fileName.lowercase()
         if (ext.isNotEmpty() && LanguageMode.entries.any { ext in it.extensions }) {
+            // `.m` is the only extension owned by two built-in languages
+            // (MATLAB and Objective-C, mirroring Notepad++). Extension order
+            // alone would always pick MATLAB, so the content breaks the tie.
+            if (ext == "m") return sniffDotM(content)
             return LanguageMode.fromFileName(fileName)
         }
         if (base == "makefile" || base == "gnumakefile") return LanguageMode.MAKEFILE
         return detect(content)
+    }
+
+    private val OBJC_MARKER = Regex(
+        "\\@interface\\b|\\@implementation\\b|\\@property\\b|\\@end\\b|\\@synthesize\\b|" +
+            "#\\s*import\\s+(<Foundation|\")",
+        RegexOption.IGNORE_CASE
+    )
+    private val MATLAB_MARKER = Regex(
+        "^\\s*function\\b|^\\s*classdef\\b|\\bend\\b(?=\\s*(%|$))|" +
+            "\\bdisp\\s*\\(|\\beval\\s*\\(|\\bnum2str\\s*\\(|\\bzeros\\s*\\(|" +
+            "^\\s*%%\\s",
+        RegexOption.MULTILINE
+    )
+
+    /**
+     * Resolves the `.m` MATLAB/Objective-C collision by content sniffing.
+     * Objective-C markers win outright; otherwise MATLAB markers pick MATLAB;
+     * with no signal from either, MATLAB stays the default (parity with the
+     * previous extension-order behavior).
+     */
+    fun sniffDotM(content: String): LanguageMode {
+        val head = if (content.length > MAX_SNIFF_BYTES) content.substring(0, MAX_SNIFF_BYTES) else content
+        if (OBJC_MARKER.containsMatchIn(head)) return LanguageMode.OBJECTIVE_C
+        if (MATLAB_MARKER.containsMatchIn(head)) return LanguageMode.MATLAB
+        return LanguageMode.MATLAB
     }
 
     private fun looksLikeJson(head: String): Boolean {

@@ -38,7 +38,7 @@ class TabBarTest {
         // elided labels end with the ellipsis codepoint and keep maxChars-1 prefix
         val elided = TabBar.elideLabel("README.md", 4)
         assertEquals(4, elided.length)
-        assertEquals("Rea", elided.take(3))
+        assertEquals("REA", elided.take(3))
         assertEquals(0x2026, elided.last().code)
         val single = TabBar.elideLabel("README.md", 1)
         assertEquals(1, single.length)

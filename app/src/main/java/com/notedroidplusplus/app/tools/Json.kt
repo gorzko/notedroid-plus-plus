@@ -11,7 +11,9 @@ object Json {
         data class Obj(val entries: List<Pair<String, Value>>) : Value()
         data class Arr(val items: List<Value>) : Value()
         data class Str(val s: String) : Value()
-        data class Num(val n: Double) : Value()
+        data class Num(val raw: String) : Value() {
+            val n: Double get() = raw.toDouble()
+        }
         data class Bool(val b: Boolean) : Value()
         object Null : Value()
     }
@@ -57,9 +59,7 @@ object Json {
                 sb.append(']')
             }
             is Value.Str -> sb.append(quote(v.s))
-            is Value.Num -> sb.append(
-                if (v.n == Math.floor(v.n) && !v.n.isInfinite() && Math.abs(v.n) < 1e15) v.n.toLong().toString() else v.n.toString()
-            )
+            is Value.Num -> sb.append(v.raw)
             is Value.Bool -> sb.append(if (v.b) "true" else "false")
             Value.Null -> sb.append("null")
         }
@@ -195,7 +195,8 @@ object Json {
             if (text.getOrNull(pos) == '-') pos++
             while (pos < text.length && (text[pos].isDigit() || text[pos] == '.' || text[pos] == 'e' || text[pos] == 'E' || text[pos] == '+' || text[pos] == '-')) pos++
             val s = text.substring(start, pos)
-            return Value.Num(s.toDoubleOrNull() ?: throw IllegalArgumentException("Bad number '$s'"))
+            if (s.toDoubleOrNull() == null) throw IllegalArgumentException("Bad number '$s'")
+            return Value.Num(s)
         }
     }
 }

@@ -25,7 +25,7 @@ class SessionStore(private val context: Context) {
                     "encoding" to Json.Value.Str(tab.encoding),
                     "lineEnding" to Json.Value.Str(tab.lineEnding),
                     "modified" to Json.Value.Bool(tab.modified),
-                    "caret" to Json.Value.Num(tab.caret.toDouble())
+                    "caret" to Json.Value.Num(tab.caret.toString())
                 )
             )
         })

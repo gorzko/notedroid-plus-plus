@@ -242,4 +242,76 @@ class MarkdownActionsTest {
         assertEquals(5, r.newStart)
         assertEquals(5, r.newEnd)
     }
+\n
+    @Test
+    fun headingSameLevelTogglesOff() {
+        for (lvl in 1..6) {
+            val prefix = "#".repeat(lvl)
+            val text = "$prefix title"
+            val r = MarkdownActions.heading(text, 0, text.length, lvl)
+            assertEquals("title", r.text)
+        }
+    }
+
+    @Test
+    fun headingSameLevelTogglesOffWithCaretInsideLine() {
+        val r = MarkdownActions.heading("## title", 5, 5, 2)
+        assertEquals("title", r.text)
+    }
+
+    @Test
+    fun headingDifferentLevelStillReplaces() {
+        val r = MarkdownActions.heading("## title", 0, 8, 3)
+        assertEquals("### title", r.text)
+        val r2 = MarkdownActions.heading("### title", 0, 9, 1)
+        assertEquals("# title", r2.text)
+    }
+
+    @Test
+    fun headingOnPlainLineStillAdds() {
+        val r = MarkdownActions.heading("hello", 2, 2, 2)
+        assertEquals("## hello", r.text)
+    }
+
+    @Test
+    fun spanCollapsedCaretWrapsCurrentLine() {
+        val r = MarkdownActions.bold("hello world", 3, 3)
+        assertEquals("**hello world**", r.text)
+        assertEquals(2, r.newStart)
+        assertEquals(13, r.newEnd)
+    }
+
+    @Test
+    fun spanCollapsedCaretWrapsLineNotWholeParagraph() {
+        val r = MarkdownActions.italic("aa\nbb\ncc", 4, 4)
+        assertEquals("aa\n*bb*\ncc", r.text)
+    }
+
+    @Test
+    fun spanCollapsedCaretSkipsLeadingAndTrailingWhitespace() {
+        val r = MarkdownActions.bold("   hi  ", 3, 3)
+        assertEquals("   **hi**  ", r.text)
+        assertEquals(5, r.newStart)
+        assertEquals(7, r.newEnd)
+    }
+
+    @Test
+    fun spanCollapsedCaretOnBlankLineInsertsEmptyPair() {
+        val r = MarkdownActions.bold("   ", 1, 1)
+        assertEquals("****", r.text)
+        assertEquals(2, r.newStart)
+        assertEquals(2, r.newEnd)
+    }
+
+    @Test
+    fun spanCollapsedCaretTogglesOffWholeLine() {
+        val r = MarkdownActions.bold("**hello world**", 5, 5)
+        assertEquals("hello world", r.text)
+    }
+
+    @Test
+    fun spanWithSelectionStillWrapsSelection() {
+        val r = MarkdownActions.bold("hello world", 0, 5)
+        assertEquals("**hello** world", r.text)
+    }
 }

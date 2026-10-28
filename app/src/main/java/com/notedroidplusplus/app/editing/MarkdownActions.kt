@@ -13,8 +13,20 @@ object MarkdownActions {
     private const val MAX_HEADING_LEVEL = 6
 
     fun toggleSpan(text: String, start: Int, end: Int, marker: String): Result {
-        val s = start.coerceIn(0, text.length)
-        val e = end.coerceIn(s, text.length)
+        var s = start.coerceIn(0, text.length)
+        var e = end.coerceIn(s, text.length)
+        // No selection: apply to the whole current line, consistent with heading/list (#76)
+        if (s == e) {
+            val ls = text.lastIndexOf('\n', s - 1).let { if (it == -1) 0 else it + 1 }
+            val le = text.indexOf('\n', s).let { if (it == -1) text.length else it }
+            val line = text.substring(ls, le)
+            if (line.isNotBlank()) {
+                val lead = line.length - line.trimStart().length
+                val tail = line.length - line.trimEnd().length
+                s = ls + lead
+                e = le - tail
+            }
+        }
         val sel = text.substring(s, e)
         val before = text.substring(0, s)
         val after = text.substring(e)
@@ -51,11 +63,17 @@ object MarkdownActions {
         val lineStart = text.lastIndexOf('\n', s - 1).let { if (it == -1) 0 else it + 1 }
         val lineEnd = text.indexOf('\n', s).let { if (it == -1) text.length else it }
         val line = text.substring(lineStart, lineEnd)
-        val existing = Regex("^#{1,6}(?:\\s|$)").find(line)?.value?.length ?: 0
+        val existingMatch = Regex("^#{1,6}(?:\\s|$)").find(line)
+        val existing = existingMatch?.value?.length ?: 0
         val body = if (existing > 0) line.substring(existing) else line
         val lvl = level.coerceIn(1, MAX_HEADING_LEVEL)
-        val prefix = "${"#".repeat(lvl)} "
-        val newLine = (prefix + body).trimEnd()
+        // Same-level re-press toggles the heading off (#75); a different level replaces it
+        val leadingHashes = line.takeWhile { it == '#' }.length
+        val newLine = if (leadingHashes in 1..MAX_HEADING_LEVEL && leadingHashes == lvl) {
+            body.trimEnd()
+        } else {
+            ("${"#".repeat(lvl)} " + body).trimEnd()
+        }
         val newText = text.substring(0, lineStart) + newLine + text.substring(lineEnd)
         val prefixDelta = prefix.length - existing
         val bodyStart = lineStart + prefix.length.coerceAtMost(newLine.length)

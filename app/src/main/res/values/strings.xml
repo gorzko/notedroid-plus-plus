@@ -204,6 +204,10 @@
 
     <string name="fif_filters_hint">Filters (e.g. *.kt *.md !*.bin !\tests)</string>
     <string name="fif_all_subfolders">In all sub-folders</string>
+    <string name="fif_replace_hint">Replace with (leave blank to delete matches)</string>
+    <string name="fif_replace_all">Replace in Files</string>
+    <string name="fif_replace_confirm">Write replacements to every matching file in the chosen folder? This cannot be undone.</string>
+    <string name="fif_replace_result">Replaced %1$d occurrence(s) in %2$d file(s)</string>
 
     <string name="menu_hashes">MD5 / SHA hashes</string>
     <string name="hash_generate">Generate\u2026</string>

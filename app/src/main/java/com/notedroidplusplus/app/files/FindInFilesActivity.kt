@@ -15,8 +15,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
 import com.notedroidplusplus.app.R
+import androidx.appcompat.app.AlertDialog
 import com.notedroidplusplus.app.search.FindFilters
 import com.notedroidplusplus.app.search.FindOptions
+import com.notedroidplusplus.app.search.replaceAll
 import com.notedroidplusplus.app.search.SearchHit
 import com.notedroidplusplus.app.search.findAll
 import kotlin.concurrent.thread
@@ -70,6 +72,14 @@ class FindInFilesActivity : AppCompatActivity() {
                 openBuffers = intent.getStringArrayListExtra(EXTRA_OPEN_BUFFERS)
                     ?.zipWithNext()?.toMap() ?: emptyMap()
                 treeLauncher.launch(null)
+            }
+        }
+
+        findViewById<Button>(R.id.fif_replace_all).setOnClickListener {
+            if (queryInput.text.isNullOrBlank()) {
+                Toast.makeText(this, R.string.find_what, Toast.LENGTH_SHORT).show()
+            } else {
+                confirmReplaceInFiles()
             }
         }
 
@@ -188,6 +198,93 @@ class FindInFilesActivity : AppCompatActivity() {
             val text = String(bytes, Charsets.UTF_8)
             findAll(text, opts, displayName, doc.uri.toString())
         }.getOrDefault(emptyList())
+    }
+
+    /** Replace in Files: writes changed content back through SAF with a confirmation first. */
+    private fun confirmReplaceInFiles() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.fif_replace_all)
+            .setMessage(getString(R.string.fif_replace_confirm))
+            .setPositiveButton(R.string.yes) { _, _ -> replaceLauncher.launch(null) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private val replaceLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            uri?.let { runReplaceInFiles(it) }
+        }
+
+    private fun runReplaceInFiles(treeUri: Uri) {
+        val opts = FindOptions(
+            query = queryInput.text.toString(),
+            replaceWith = findViewById<EditText>(R.id.fif_replace).text.toString(),
+            matchCase = matchCase.isChecked,
+            wholeWord = wholeWord.isChecked,
+            regex = regex.isChecked
+        )
+        val filters = FindFilters.parse(filtersInput.text.toString())
+        val includeSubfolders = allSubfolders.isChecked
+        progress.visibility = View.VISIBLE
+        searchCancelled = false
+        findViewById<Button>(R.id.fif_search).isEnabled = false
+        findViewById<Button>(R.id.fif_cancel).visibility = View.VISIBLE
+        thread {
+            var filesChanged = 0
+            var occurrences = 0
+            val root = DocumentFile.fromTreeUri(this, treeUri)
+            if (root != null) {
+                walkReplace(root, opts, filters, includeSubfolders, depth = 0,
+                    isCancelled = { searchCancelled }) { count ->
+                    filesChanged++
+                    occurrences += count
+                }
+            }
+            runOnUiThread {
+                progress.visibility = View.GONE
+                findViewById<Button>(R.id.fif_search).isEnabled = true
+                findViewById<Button>(R.id.fif_cancel).visibility = View.GONE
+                Toast.makeText(
+                    this,
+                    getString(R.string.fif_replace_result, occurrences, filesChanged),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun walkReplace(
+        dir: DocumentFile,
+        opts: FindOptions,
+        filters: FindFilters.Parsed,
+        includeSubfolders: Boolean,
+        depth: Int,
+        isCancelled: () -> Boolean,
+        onFileChanged: (Int) -> Unit
+    ) {
+        dir.listFiles().forEach { doc ->
+            if (isCancelled()) return
+            if (doc.isDirectory) {
+                if (includeSubfolders && FindFilters.acceptsDirectory(filters, doc.name ?: "", depth)) {
+                    walkReplace(doc, opts, filters, includeSubfolders, depth + 1, isCancelled, onFileChanged)
+                }
+            } else if (doc.isFile) {
+                if (!FindFilters.acceptsFile(filters, doc.name ?: "")) return@forEach
+                val size = doc.length()
+                if (size <= 0 || size > 5 * 1024 * 1024) return@forEach
+                runCatching {
+                    val bytes = contentResolver.openInputStream(doc.uri)?.use { it.readBytes() } ?: return@forEach
+                    val probe = bytes.copyOf(minOf(bytes.size, 1024))
+                    if (probe.count { it == 0.toByte() } > probe.size / 8) return@forEach
+                    val text = String(bytes, Charsets.UTF_8)
+                    val (replaced, count) = replaceAll(text, opts)
+                    if (count > 0 && replaced != text) {
+                        contentResolver.openOutputStream(doc.uri, "wt")?.use { it.write(replaced.toByteArray(Charsets.UTF_8)) }
+                        onFileChanged(count)
+                    }
+                }
+            }
+        }
     }
 
     companion object {

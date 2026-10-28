@@ -142,7 +142,7 @@ object TextUtils {
     fun splitLines(text: String, selStart: Int, selEnd: Int, eol: String): String {
         if (selEnd <= selStart) return text
         val seg = text.substring(selStart, selEnd)
-        val replaced = normalize(seg).replace(" ", eol)
+        val replaced = normalize(seg).replace(" ", eol).replace("\n", eol)
         return text.substring(0, selStart) + replaced + text.substring(selEnd)
     }
 

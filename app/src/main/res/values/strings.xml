@@ -160,6 +160,7 @@
     <string name="op_date_long">Date Time (long)</string>
     <string name="op_date_custom">Date Time (custom)…</string>
     <string name="date_format_prompt">Custom date/time format (Java DateTimeFormatter pattern)</string>
+    <string name="date_format_invalid">Invalid date/time format pattern</string>
     <string name="date_format_hint">e.g. yyyy-MM-dd HH:mm:ss</string>
     <string name="copy_path_filename">Filename</string>
     <string name="copy_path_full">Full path</string>

@@ -89,6 +89,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private var findOptions = FindOptions()
     private var findPanelOpen = false
     private var pendingCloseIndex = -1
+    private val saveAsQueue = mutableListOf<TabSession>()
+    private var pendingSaveAsSession: TabSession? = null
 
     private val openLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -108,19 +110,23 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 if (resultCode == RESULT_OK) intent?.data else null
         }) { uri ->
             val savedUri = uri
-            if (savedUri != null) {
-                val s = if (pendingCloseIndex >= 0) tabs.getOrNull(pendingCloseIndex) else activeSession()
-                if (s != null) {
-                    pendingSaveEncoding?.let { enc -> s.document = s.document.copy(encoding = enc) }
-                }
+            val encodingTarget = pendingSaveAsSession
+            if (savedUri != null && encodingTarget != null) {
+                pendingSaveEncoding?.let { enc -> encodingTarget.document = encodingTarget.document.copy(encoding = enc) }
             }
             if (savedUri == null) {
                 if (pendingCloseIndex >= 0) pendingCloseIndex = -1
                 pendingSaveEncoding = null
+                pendingSaveAsSession = null
+                saveAsQueue.clear()
                 return@registerForActivityResult
             }
             val index = pendingCloseIndex
-            val session = if (index >= 0) tabs.getOrNull(index) else activeSession()
+            val session = when {
+                index >= 0 -> tabs.getOrNull(index)
+                encodingTarget != null && tabs.contains(encodingTarget) -> encodingTarget
+                else -> activeSession()
+            }
             if (session != null) {
                 val saved = saveSessionTo(session, savedUri)
                 if (index >= 0) {
@@ -129,6 +135,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
             }
             pendingCloseIndex = -1
             pendingSaveEncoding = null
+            pendingSaveAsSession = null
+            launchNextQueuedSaveAs()
         }
 
     private val fifLauncher =
@@ -401,8 +409,10 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.addTextChangedListener(tw)
         if (before != text) {
             pushWholeTextChange(s, before, text)
+            s.document = s.document.copy(text = text, modified = true)
+        } else {
+            s.document = s.document.copy(text = text)
         }
-        s.document = s.document.copy(text = text, modified = true)
         refreshTabLabels()
         updateStatus()
     }
@@ -534,6 +544,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 hasBom = loaded.hadBom,
                 modified = false
             )
+            current.readOnly = false
+            editor.filters = emptyArray()
             editor.removeTextChangedListener(tw)
             editor.setText(loaded.text)
             editor.language = language
@@ -665,9 +677,20 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .setItems(encodings.toTypedArray()) { _, which ->
                 pendingSaveEncoding = encodings[which]
                 pendingCloseIndex = -1
+                pendingSaveAsSession = s
                 saveAsLauncher.launch(mimeFor(s.document.fileName) to s.document.fileName)
             }
-            .setNegativeButton(R.string.cancel) { _, _ -> pendingSaveEncoding = null }
+            .setNegativeButton(R.string.cancel) { _, _ ->
+                pendingSaveEncoding = null
+                pendingSaveAsSession = null
+                saveAsQueue.clear()
+                launchNextQueuedSaveAs()
+            }
+            .setOnCancelListener {
+                pendingSaveEncoding = null
+                pendingSaveAsSession = null
+                saveAsQueue.clear()
+            }
             .show()
     }
 
@@ -812,6 +835,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun replaceOne() {
+        if (isEditorLocked()) return
         refreshFindOptions()
         val text = editor.text?.toString() ?: return
         val selStart = editor.selectionStart.coerceAtMost(editor.selectionEnd)
@@ -957,6 +981,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun applyMarkdown(op: (String, Int, Int) -> MarkdownActions.Result) {
         if (previewMode != null) return
+        if (isEditorLocked()) return
         val text = editor.text?.toString() ?: return
         val s = editor.selectionStart.coerceAtLeast(0)
         val e = editor.selectionEnd.coerceAtLeast(s)
@@ -995,8 +1020,13 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun applyLineOp(eol: String, op: (String, Int, Int) -> String) {
         if (isEditorLocked()) return
         val text = editor.text?.toString() ?: return
+        val caret = editor.selectionStart.coerceIn(0, text.length)
         val (first, last) = TextUtils.lineSpanForSelection(text, editor.selectionStart, editor.selectionEnd)
-        setEditorText(op(text, first, last))
+        val replaced = op(text, first, last)
+        setEditorText(replaced)
+        if (replaced != text) {
+            editor.setSelection(caret.coerceIn(0, replaced.length))
+        }
     }
 
     private fun applySelectionOp(op: (String, Int, Int) -> String) {
@@ -1014,9 +1044,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun moveActiveLine(eol: String, up: Boolean) {
         if (isEditorLocked()) return
         val text = editor.text?.toString() ?: return
+        val caret = editor.selectionStart.coerceIn(0, text.length)
         val (line, _) = TextUtils.lineSpanForSelection(text, editor.selectionStart, editor.selectionEnd)
         val replaced = if (up) TextUtils.moveLineUp(text, line, eol) else TextUtils.moveLineDown(text, line, eol)
         setEditorText(replaced)
+        if (replaced != text) {
+            val col = caret - TextUtils.lineIndexToOffset(text, line)
+            val newLine = if (up) line - 1 else line + 1
+            val newStart = TextUtils.lineIndexToOffset(replaced, newLine)
+            editor.setSelection((newStart + col).coerceIn(0, replaced.length))
+        }
     }
 
     private fun insertAtCaret(value: String) {
@@ -1038,7 +1075,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 prefs.edit().putString("date_format_custom", pattern).apply()
                 val formatted = TextUtils.formatDateTime(pattern, now)
                 if (formatted.isEmpty()) {
-                    Toast.makeText(this, R.string.date_format_prompt, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, R.string.date_format_invalid, Toast.LENGTH_SHORT).show()
                 } else insertAtCaret(formatted)
             }
             .setNegativeButton(R.string.cancel, null)
@@ -1062,9 +1099,18 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 if (saveSessionTo(s, Uri.parse(uri))) saved++
             }
         }
-        val untitled = tabs.count { it.document.modified && it.document.uri == null }
+        saveAsQueue.clear()
+        saveAsQueue.addAll(tabs.filter { it.document.modified && it.document.uri == null })
         Toast.makeText(this, getString(R.string.save_all_result, saved), Toast.LENGTH_SHORT).show()
-        if (untitled > 0) activeSession()?.takeIf { it.document.uri == null && it.document.modified }?.let { saveAsWithEncoding(it) }
+        launchNextQueuedSaveAs()
+    }
+
+    /** Starts the Save As flow for the next queued untitled tab (Save All), one picker at a time. */
+    private fun launchNextQueuedSaveAs() {
+        val next = saveAsQueue.removeFirstOrNull() ?: return
+        if (!tabs.contains(next) || !next.document.modified) return launchNextQueuedSaveAs()
+        pendingSaveAsSession = next
+        saveAsWithEncoding(next)
     }
 
     private fun reloadActive() {
@@ -1092,6 +1138,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 editor.language = ContentSniffer.detectWithFileName(s.document.fileName, loaded.text)
                 editor.setSelection(0)
                 editor.addTextChangedListener(tw)
+                applyReadOnly(s)
                 refreshTabLabels()
                 updateStatus()
             } catch (e: Exception) {
@@ -1119,6 +1166,13 @@ class MainActivity : AppCompatActivity(), PluginHost {
         val s = activeSession() ?: return
         syncActiveDocument()
         val text = s.document.text.ifEmpty { " " }
+        val defaultMargin = 36f
+        var layoutWidth = 0
+        var layoutHeight = 0
+        var marginH = defaultMargin
+        var marginV = defaultMargin
+        var printWidth = 595
+        var printHeight = 842
         val adapter = object : PrintDocumentAdapter() {
             override fun onLayout(oldAttributes: PrintAttributes?, newAttributes: PrintAttributes,
                                   cancellationSignal: CancellationSignal?, callback: LayoutResultCallback, extras: android.os.Bundle?) {
@@ -1126,6 +1180,19 @@ class MainActivity : AppCompatActivity(), PluginHost {
                     callback.onLayoutCancelled()
                     return
                 }
+                // PdfDocument pages are in points (1/72"); media/margins come in mils (1/1000").
+                val media = newAttributes.mediaSize
+                printWidth = if (media != null) media.widthMils * 72 / 1000 else 595
+                printHeight = if (media != null) media.heightMils * 72 / 1000 else 842
+                val margins = newAttributes.minMargins
+                marginH = margins?.leftMils?.times(72f)?.div(1000f) ?: defaultMargin
+                marginV = margins?.topMils?.times(72f)?.div(1000f) ?: defaultMargin
+                if (printWidth <= 2 * marginH || printHeight <= 2 * marginV) {
+                    marginH = defaultMargin
+                    marginV = defaultMargin
+                }
+                layoutWidth = (printWidth - 2 * marginH).toInt().coerceAtLeast(1)
+                layoutHeight = (printHeight - 2 * marginV).toInt().coerceAtLeast(1)
                 callback.onLayoutFinished(PrintDocumentInfo.Builder(s.document.fileName)
                     .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
                     .build(), true)
@@ -1134,35 +1201,33 @@ class MainActivity : AppCompatActivity(), PluginHost {
             override fun onWrite(pages: Array<out android.print.PageRange>?, destination: android.os.ParcelFileDescriptor,
                                  cancellationSignal: CancellationSignal?, callback: WriteResultCallback) {
                 Thread {
+                    if (cancellationSignal?.isCanceled == true) {
+                        callback.onWriteCancelled()
+                        return@Thread
+                    }
+                    val paint = TextPaint().apply {
+                        textSize = 11f
+                        isAntiAlias = true
+                    }
+                    val w = if (layoutWidth > 0) layoutWidth else (printWidth - 2 * defaultMargin).toInt().coerceAtLeast(1)
+                    val h = if (layoutHeight > 0) layoutHeight else (printHeight - 2 * defaultMargin).toInt().coerceAtLeast(1)
+                    val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, w)
+                        .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                        .setLineSpacing(2f, 1.1f)
+                        .build()
+                    val lineHeight = if (layout.lineCount > 0) layout.getLineBottom(0).coerceAtLeast(1) else 1
+                    val linesPerPage = (h / lineHeight).coerceAtLeast(1)
+                    val pageCount = (layout.lineCount + linesPerPage - 1) / linesPerPage
+                    val doc = PdfDocument()
                     try {
-                        if (cancellationSignal?.isCanceled == true) {
-                            callback.onWriteCancelled()
-                            return@Thread
-                        }
-                        val density = resources.displayMetrics.density
-                        val paint = TextPaint().apply {
-                            textSize = 11f * density
-                            isAntiAlias = true
-                        }
-                        val pageWidth = (595f * density).toInt()
-                        val pageHeight = (842f * density).toInt()
-                        val margin = 36f * density
-                        val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, (pageWidth - 2 * margin).toInt())
-                            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                            .setLineSpacing(2f, 1.1f)
-                            .build()
-                        val lineHeight = if (layout.lineCount > 0) layout.getLineBottom(0).coerceAtLeast(1) else 1
-                        val linesPerPage = ((pageHeight - 2 * margin) / lineHeight).toInt().coerceAtLeast(1)
-                        val pageCount = (layout.lineCount + linesPerPage - 1) / linesPerPage
-                        val doc = PdfDocument()
                         for (pageNo in 1..pageCount) {
-                            val info = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNo).create()
+                            val info = PdfDocument.PageInfo.Builder(printWidth, printHeight, pageNo).create()
                             val page = doc.startPage(info)
                             val canvas = page.canvas
                             canvas.save()
-                            canvas.translate(margin, margin - (pageNo - 1) * linesPerPage * lineHeight)
+                            canvas.translate(marginH, marginV - (pageNo - 1) * linesPerPage * lineHeight)
                             canvas.clipRect(0, (pageNo - 1) * linesPerPage * lineHeight,
-                                (pageWidth - 2 * margin).toInt(), pageNo * linesPerPage * lineHeight)
+                                w, pageNo * linesPerPage * lineHeight)
                             layout.draw(canvas)
                             canvas.restore()
                             doc.finishPage(page)
@@ -1170,10 +1235,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
                         java.io.FileOutputStream(destination.fileDescriptor).use { out ->
                             doc.writeTo(out)
                         }
-                        doc.close()
                         callback.onWriteFinished(arrayOf(android.print.PageRange.ALL_PAGES))
                     } catch (e: Exception) {
                         callback.onWriteFailed(e.message)
+                    } finally {
+                        doc.close()
                     }
                 }.start()
             }
@@ -1316,8 +1382,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.op_move_down)) { moveActiveLine(eol, up = false) }
         item(getString(R.string.op_reverse)) { applyLineOp(eol) { t, f, l -> TextUtils.reverseLines(t, f, l, eol) } }
         item(getString(R.string.op_randomize)) { applyLineOp(eol) { t, f, l -> TextUtils.randomizeLines(t, f, l, eol, java.util.Random()) } }
-        item(getString(R.string.op_sort_asc)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, false, numeric = false, ignoreCase = false) } }
-        item(getString(R.string.op_sort_desc)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, true, numeric = false, ignoreCase = false) } }
+        item(getString(R.string.op_sort_asc)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, false, numeric = false, ignoreCase = true) } }
+        item(getString(R.string.op_sort_desc)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, true, numeric = false, ignoreCase = true) } }
         item(getString(R.string.op_sort_asc_lexicographic)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, false, numeric = false, ignoreCase = false) } }
         item(getString(R.string.op_sort_desc_lexicographic)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, true, numeric = false, ignoreCase = false) } }
         item(getString(R.string.op_sort_asc_numeric)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, false, numeric = true, ignoreCase = false) } }

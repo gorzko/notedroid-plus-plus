@@ -77,6 +77,7 @@ class TextUtilsTest {
         assertEquals("a b c", TextUtils.splitLines("a b c", 0, 0, "\n"))
         assertEquals("one\ntwo three", TextUtils.joinLines("one\ntwo\nthree", 4, 13))
         assertEquals("one\ntwo", TextUtils.joinLines("one\ntwo", 0, 3))
+        assertEquals("a\r\nb\r\nc\r\nd", TextUtils.splitLines("a b\r\nc d", 0, 9, "\r\n"))
     }
 
     @Test
@@ -108,6 +109,8 @@ class TextUtilsTest {
         assertEquals("c\nb\na", TextUtils.sortLines("c\na\nb", 0, 2, "\n", descending = true, numeric = false, ignoreCase = false))
         assertEquals("2\n10\n30", TextUtils.sortLines("10\n30\n2", 0, 2, "\n", descending = false, numeric = true, ignoreCase = false))
         assertEquals("a\nB\nc", TextUtils.sortLines("c\nB\na", 0, 2, "\n", descending = false, numeric = false, ignoreCase = true))
+        assertEquals("a\nB\nc", TextUtils.sortLines("B\na\nc", 0, 2, "\n", descending = false, numeric = false, ignoreCase = true))
+        assertEquals("B\na\nc", TextUtils.sortLines("B\na\nc", 0, 2, "\n", descending = false, numeric = false, ignoreCase = false))
     }
 
     @Test

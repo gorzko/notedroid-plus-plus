@@ -57,8 +57,11 @@ import com.notedroidplusplus.app.search.findPrev
 import com.notedroidplusplus.app.search.replaceAll
 import com.notedroidplusplus.app.settings.SettingsActivity
 import com.notedroidplusplus.app.settings.ThemeRegistry
+import com.notedroidplusplus.app.tools.CharacterTable
+import com.notedroidplusplus.app.tools.HashTool
 import com.notedroidplusplus.app.tools.JsonTool
 import com.notedroidplusplus.app.tools.XmlTool
+import kotlin.concurrent.thread
 import java.nio.charset.Charset
 
 class MainActivity : AppCompatActivity(), PluginHost {
@@ -1565,6 +1568,151 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.action_minify)) { minify() }
         item(getString(R.string.action_validate_xml)) { validateXml() }
         item(getString(R.string.action_preview)) { preview() }
+        item(getString(R.string.action_character_panel)) { showCharacterPanel() }
+        menu.add(getString(R.string.menu_hashes)).isEnabled = false
+        HashTool.Algorithm.entries.forEach { alg ->
+            item(alg.display) { showHashMenu(alg) }
+        }
+    }
+
+    private fun showHashMenu(alg: HashTool.Algorithm) {
+        popup {
+            item(getString(R.string.hash_generate)) { promptHashText(alg) }
+            item(getString(R.string.hash_from_files)) {
+            pendingHashAlgorithm = alg
+            hashFilesLauncher.launch(arrayOf("*/*"))
+        }
+            item(getString(R.string.hash_from_selection)) {
+                val sel = getSelection()
+                if (sel.isEmpty()) {
+                    Toast.makeText(this@MainActivity, R.string.hash_no_selection, Toast.LENGTH_SHORT).show()
+                } else {
+                    copyToClipboard(HashTool.hashText(alg, sel))
+                    Toast.makeText(this@MainActivity, R.string.hash_copied, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun promptHashText(alg: HashTool.Algorithm) {
+        val input = EditText(this).apply {
+            hint = getString(R.string.hash_input_hint)
+            minLines = 2
+            gravity = android.view.Gravity.TOP
+        }
+        AlertDialog.Builder(this)
+            .setTitle(alg.display)
+            .setView(input)
+            .setPositiveButton(R.string.hash_copy) { _, _ ->
+                val digest = HashTool.hashText(alg, input.text.toString())
+                copyToClipboard(digest)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private val hashFilesLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            if (uris.isNullOrEmpty()) return@registerForActivityResult
+            val alg = pendingHashAlgorithm ?: return@registerForActivityResult
+            thread(name = "hash-files") {
+                val lines = uris.map { uri ->
+                    val name = runCatching { files.displayName(uri) }.getOrDefault(uri.lastPathSegment ?: "?")
+                    val digest = runCatching {
+                        contentResolver.openInputStream(uri)?.use { HashTool.hashStream(alg, it) }
+                    }.getOrNull()
+                    if (digest == null) "$name: ${getString(R.string.error_load_failed, "?")}"
+                    else "$name: $digest"
+                }
+                runOnUiThread {
+                    pendingHashAlgorithm = null
+                    AlertDialog.Builder(this)
+                        .setTitle(alg.display)
+                        .setMessage(lines.joinToString("\n"))
+                        .setPositiveButton(R.string.hash_copy) { _, _ ->
+                            copyToClipboard(lines.joinToString("\n"))
+                        }
+                        .setNegativeButton(R.string.cancel, null)
+                        .show()
+                }
+            }
+        }
+
+    private var pendingHashAlgorithm: HashTool.Algorithm? = null
+
+    // ---- Character Panel (#57) ----
+
+    private fun showCharacterPanel() {
+        val s = activeSession()
+        val charset = runCatching { Charset.forName(s?.document?.encoding ?: "UTF-8") }.getOrDefault(Charsets.UTF_8)
+        val rows = CharacterTable.rows(charset)
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(24, 16, 24, 16)
+        }
+        val unicodeInput = EditText(this).apply {
+            hint = getString(R.string.char_unicode_hint)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            maxLines = 1
+        }
+        layout.addView(android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            addView(unicodeInput, android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(android.widget.Button(this@MainActivity).apply {
+                text = getString(R.string.char_unicode_insert)
+                setOnClickListener {
+                    val cp = CharacterTable.parseCodepoint(unicodeInput.text.toString())
+                    if (cp == null) {
+                        Toast.makeText(this@MainActivity, R.string.char_unicode_invalid, Toast.LENGTH_SHORT).show()
+                    } else {
+                        insertAtCaret(CharacterTable.codepointToChar(cp))
+                        Toast.makeText(this@MainActivity, getString(R.string.char_inserted, CharacterTable.codepointToChar(cp)), Toast.LENGTH_SHORT).show()
+                    }
+                }
+            })
+        }, android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+        val grid = android.widget.GridView(this).apply {
+            numColumns = 4
+            adapter = object : android.widget.BaseAdapter() {
+                override fun getCount() = rows.size * 3
+                override fun getItem(position: Int) = position
+                override fun getItemId(position: Int) = position.toLong()
+                override fun getView(position: Int, convertView: android.view.View?, parent: android.view.ViewGroup): android.view.View {
+                    val tv = (convertView as? android.widget.TextView) ?: android.widget.TextView(this@MainActivity).apply {
+                        gravity = android.view.Gravity.CENTER
+                        setPadding(8, 8, 8, 8)
+                        textSize = 13f
+                    }
+                    val row = rows[position / 3]
+                    when (position % 3) {
+                        0 -> tv.text = "${row.value} ${row.hex} ${row.char}"
+                        1 -> tv.text = row.htmlName ?: row.htmlDecimal
+                        2 -> tv.text = row.htmlHex
+                    }
+                    return tv
+                }
+            }
+            setOnItemClickListener { _, _, position, _ ->
+                val row = rows[position / 3]
+                val insert = when (position % 3) {
+                    0 -> row.char
+                    1 -> row.htmlName ?: row.htmlDecimal
+                    else -> row.htmlHex
+                }
+                insertAtCaret(insert)
+                Toast.makeText(this@MainActivity, getString(R.string.char_inserted, insert), Toast.LENGTH_SHORT).show()
+            }
+        }
+        layout.addView(grid, android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.char_panel_title, charset.name()))
+            .setView(layout)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     private fun validateXml() {

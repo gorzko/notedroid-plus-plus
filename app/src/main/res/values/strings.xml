@@ -215,7 +215,7 @@
     <string name="hash_copied">Hash copied to clipboard</string>
 
     <string name="action_character_panel">Character Panel</string>
-    <string name="char_panel_title">Character Panel (ASCII)</string>
+    <string name="char_panel_title">Character Panel — %1$s</string>
     <string name="char_col_value">Value</string>
     <string name="char_col_hex">Hex</string>
     <string name="char_col_char">Char</string>

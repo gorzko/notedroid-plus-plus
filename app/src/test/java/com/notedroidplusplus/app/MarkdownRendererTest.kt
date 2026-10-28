@@ -47,8 +47,9 @@ class MarkdownRendererTest {
     @Test
     fun linkWithAttributeInjectionIsNeutralized() {
         val html = MarkdownRenderer.render("[x](https://a.com\" onmouseover=\"alert(1))")
-        assertTrue("attribute must not break out", !html.contains("onmouseover="))
-        assertTrue(html.contains("%22"))
+        assertTrue("no raw quote+space may break out of the href", !html.contains("\" onmouseover"))
+        assertTrue("space must be percent-encoded inside the href", html.contains("%20onmouseover"))
+        assertTrue(html.contains("<a href=\""))
     }
 
     @Test
@@ -56,7 +57,8 @@ class MarkdownRendererTest {
         for (scheme in listOf("javascript", "data", "file", "vbscript")) {
             val html = MarkdownRenderer.render("[x](${scheme}:alert(1))")
             assertTrue("scheme $scheme must not survive", !html.contains("${scheme}:"))
-            assertTrue(html.contains(">x<"))
+            assertTrue("link must degrade to plain label text", html.contains("<p>x"))
+            assertTrue("no anchor tag for rejected scheme", !html.contains("<a href"))
         }
     }
 

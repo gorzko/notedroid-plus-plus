@@ -184,7 +184,275 @@ object SyntaxHighlighter {
         LanguageMode.MAKEFILE to setOf(
             "ifeq", "ifneq", "else", "endif", "include", "define", "endef", "export",
             "unexport", "override", "ifdef", "ifndef", ".PHONY", ".DEFAULT", ".PRECIOUS"
-        )
+        ),
+        LanguageMode.TOML to setOf(
+            "true", "false", "inf", "nan"
+        ),
+        LanguageMode.POWERSHELL to setOf(
+            "begin", "break", "catch", "class", "continue", "data", "define", "do",
+            "dynamicparam", "else", "elseif", "end", "enum", "exit", "filter", "finally",
+            "for", "foreach", "from", "function", "hidden", "if", "in", "param", "process",
+            "return", "static", "switch", "throw", "trap", "try", "until", "using", "var",
+            "while", "workflow", "yield", "alias", "new"
+        ),
+        LanguageMode.PERL to setOf(
+            "my", "our", "local", "use", "no", "package", "sub", "BEGIN", "END", "if",
+            "elsif", "else", "unless", "while", "until", "for", "foreach", "do", "last",
+            "next", "redo", "return", "require", "eval", "and", "or", "not", "xor", "die",
+            "warn", "print", "printf", "grep", "map", "sort", "keys", "values", "each", "qw"
+        ),
+        LanguageMode.CMAKE to setOf(
+            "if", "elseif", "else", "endif", "foreach", "endforeach", "while", "endwhile",
+            "function", "endfunction", "macro", "endmacro", "include", "return", "set",
+            "unset", "cmake_minimum_required", "project", "add_executable", "add_library",
+            "target_link_libraries", "target_include_directories", "find_package", "find_library",
+            "find_path", "find_program", "message", "option", "add_subdirectory", "install",
+            "set_target_properties", "target_sources", "add_custom_command", "TRUE", "FALSE"
+        ),
+        LanguageMode.VHDL to setOf(
+            "abs", "access", "after", "alias", "all", "and", "architecture", "array", "assert",
+            "attribute", "begin", "block", "body", "buffer", "bus", "case", "component",
+            "configuration", "constant", "disconnect", "downto", "else", "elsif", "end",
+            "entity", "exit", "file", "for", "function", "generate", "generic", "group",
+            "guarded", "if", "impure", "in", "inertial", "inout", "is", "label", "library",
+            "linkage", "literal", "loop", "map", "mod", "nand", "new", "next", "nor", "not",
+            "null", "of", "on", "open", "or", "others", "out", "package", "port", "postponed",
+            "procedure", "process", "pure", "range", "record", "register", "reject", "rem",
+            "report", "return", "rol", "ror", "select", "severity", "signal", "shared",
+            "sla", "sll", "sra", "srl", "subtype", "then", "to", "transport", "type",
+            "unaffected", "units", "until", "use", "variable", "wait", "when", "while", "with",
+            "xnor", "xor"
+        ),
+        LanguageMode.VERILOG to setOf(
+            "always", "and", "assign", "begin", "buf", "bufif0", "bufif1", "case", "casex",
+            "casez", "cmos", "deassign", "default", "defparam", "disable", "edge", "else",
+            "end", "endcase", "endfunction", "endgenerate", "endmodule", "endprimitive",
+            "endspecify", "endtable", "endtask", "event", "for", "forever", "fork", "function",
+            "generate", "genvar", "if", "ifnone", "initial", "inout", "input", "integer",
+            "join", "large", "localparam", "macromodule", "medium", "module", "nand", "negedge",
+            "nmos", "nor", "not", "notif0", "notif1", "or", "output", "parameter", "pmos",
+            "posedge", "primitive", "pull0", "pull1", "pulldown", "pullup", "rcmos", "real",
+            "realtime", "reg", "release", "repeat", "rnmos", "rpmos", "rtran", "rtranif0",
+            "rtranif1", "scalared", "small", "specify", "specparam", "strong0", "strong1",
+            "supply0", "supply1", "table", "task", "time", "tran", "tranif0", "tranif1",
+            "tri", "tri0", "tri1", "triand", "trior", "trireg", "vectored", "wait", "wand",
+            "weak0", "weak1", "while", "wire", "wor", "xnor", "xor"
+        ),
+        LanguageMode.ASSEMBLY to setOf(
+            "mov", "add", "sub", "mul", "div", "inc", "dec", "push", "pop", "call", "ret",
+            "jmp", "cmp", "test", "je", "jne", "jz", "jnz", "jg", "jl", "jge", "jle", "ja",
+            "jb", "jae", "jbe", "and", "or", "xor", "not", "shl", "shr", "lea", "int",
+            "nop", "loop", "section", "segment", "global", "extern", "db", "dw", "dd", "dq",
+            "resb", "resw", "equ", "times", "org", "bits"
+        ),
+        LanguageMode.AUTOIT to setOf(
+            "And", "Or", "Not", "If", "Then", "Else", "ElseIf", "EndIf", "Select", "Case",
+            "EndSelect", "Switch", "EndSwitch", "For", "Next", "To", "Step", "In", "While",
+            "WEnd", "Do", "Until", "ContinueLoop", "ExitLoop", "Exit", "Dim", "Local", "Global",
+            "Const", "ReDim", "Func", "EndFunc", "Return", "ByRef", "Volatile"
+        ),
+        LanguageMode.COFFEESCRIPT to setOf(
+            "true", "false", "null", "this", "new", "delete", "typeof", "in", "instanceof",
+            "super", "extends", "class", "return", "if", "else", "elseif", "then", "for",
+            "while", "until", "loop", "break", "continue", "switch", "when", "unless", "and",
+            "or", "not", "do", "try", "catch", "finally", "throw", "yes", "no", "on", "off"
+        ),
+        LanguageMode.LISP to setOf(
+            "defun", "defvar", "defparameter", "defconstant", "setq", "setf", "let", "let*",
+            "if", "cond", "when", "unless", "while", "do", "dolist", "dotimes", "loop",
+            "progn", "lambda", "apply", "funcall", "return", "car", "cdr", "cons",
+            "list", "atom", "eq", "null", "and", "or", "not", "t", "nil"
+        ),
+        LanguageMode.SCHEME to setOf(
+            "define", "lambda", "let", "let*", "letrec", "if", "cond", "else", "when",
+            "unless", "case", "do", "while", "loop", "begin", "set!", "and", "or", "not",
+            "car", "cdr", "cons", "list", "null?", "eq?", "eqv?", "equal?", "apply", "map",
+            "for-each", "quote", "quasiquote", "unquote"
+        ),
+        LanguageMode.PASCAL to setOf(
+            "and", "array", "as", "asm", "begin", "case", "class", "const", "constructor",
+            "destructor", "dispinterface", "div", "do", "downto", "else", "end", "except",
+            "exports", "file", "finalization", "finally", "for", "function", "goto", "if",
+            "implementation", "in", "inherited", "initialization", "inline", "interface", "is",
+            "label", "library", "mod", "nil", "not", "object", "of", "or", "out", "packed",
+            "procedure", "program", "property", "raise", "record", "repeat", "resourcestring",
+            "set", "shl", "shr", "string", "then", "threadvar", "to", "try", "type", "unit",
+            "until", "uses", "var", "while", "with", "xor"
+        ),
+        LanguageMode.ADA to setOf(
+            "abort", "abs", "abstract", "accept", "access", "aliased", "all", "and", "array",
+            "at", "begin", "body", "case", "constant", "declare", "delay", "delta", "digits",
+            "do", "else", "elsif", "end", "entry", "exception", "exit", "for", "function",
+            "generic", "goto", "if", "in", "interface", "is", "limited", "loop", "mod", "new",
+            "not", "null", "of", "or", "others", "out", "overriding", "package", "pragma",
+            "private", "procedure", "protected", "raise", "range", "record", "rem", "renames",
+            "requeue", "return", "reverse", "select", "separate", "some", "subtype", "synchronized",
+            "tagged", "task", "terminate", "then", "type", "until", "use", "when", "while",
+            "with", "xor"
+        ),
+        LanguageMode.FORTRAN to setOf(
+            "program", "end", "subroutine", "function", "if", "then", "else", "elseif",
+            "endif", "do", "while", "enddo", "select", "case", "endselect", "implicit", "none",
+            "integer", "real", "complex", "logical", "character", "dimension", "parameter",
+            "intent", "in", "out", "inout", "call", "return", "stop", "pause", "cycle",
+            "exit", "use", "module", "contains", "print", "read", "write", "format", "data",
+            "common", "equivalence", "save", "allocatable", "allocate", "deallocate", "pointer",
+            "target", "interface", "type", "public", "private", "namelist"
+        ),
+        LanguageMode.HASKELL to setOf(
+            "case", "class", "data", "default", "deriving", "do", "else", "foreign", "if",
+            "import", "in", "infix", "infixl", "infixr", "instance", "let", "module", "newtype",
+            "of", "then", "type", "where", "mdo"
+        ),
+        LanguageMode.ERLANG to setOf(
+            "after", "and", "andalso", "band", "begin", "bnot", "bor", "bsl", "bsr", "bxor",
+            "case", "catch", "cond", "div", "end", "fun", "if", "let", "not", "of", "or",
+            "orelse", "receive", "rem", "try", "when", "xor", "query"
+        ),
+        LanguageMode.R to setOf(
+            "if", "else", "repeat", "while", "function", "for", "in", "next", "break", "TRUE",
+            "FALSE", "NULL", "Inf", "NaN", "NA", "NA_integer_", "NA_real_", "NA_character_",
+            "NA_complex_"
+        ),
+        LanguageMode.TCL to setOf(
+            "proc", "if", "then", "elseif", "else", "switch", "default", "for", "foreach",
+            "while", "break", "continue", "return", "eval", "catch", "error", "exec", "exit",
+            "set", "unset", "global", "variable", "upvar", "uplevel", "source", "package",
+            "require", "provide", "namespace", "incr", "append", "lappend", "puts", "open",
+            "close", "gets", "read", "puts", "expr", "string", "list", "array", "regexp", "regsub"
+        ),
+        LanguageMode.MATLAB to setOf(
+            "function", "end", "if", "else", "elseif", "switch", "case", "otherwise", "for",
+            "while", "break", "continue", "return", "try", "catch", "global", "persistent",
+            "classdef", "properties", "methods", "events", "arguments"
+        ),
+        LanguageMode.OBJECTIVE_C to setOf(
+            "if", "else", "for", "while", "do", "switch", "case", "default", "break", "continue",
+            "return", "goto", "id", "self", "super", "nil", "Nil", "YES", "NO", "@interface",
+            "@implementation", "@end", "@class", "@protocol", "@property", "@synthesize",
+            "@dynamic", "@public", "@private", "@protected", "@package", "@required",
+            "@optional", "@selector", "@encode", "@autoreleasepool", "@try", "@catch",
+            "@finally", "@throw", "@synchronized"
+        ),
+        LanguageMode.VISUALBASIC to setOf(
+            "AddHandler", "AddressOf", "Alias", "And", "AndAlso", "As", "Boolean", "ByRef",
+            "ByVal", "Call", "Case", "Catch", "Class", "Const", "Continue", "Dim", "Do",
+            "Double", "Each", "Else", "ElseIf", "End", "Enum", "Erase", "Error", "Event",
+            "Exit", "False", "Finally", "For", "Friend", "Function", "Get", "GetType", "GoTo",
+            "Handles", "If", "Implements", "Imports", "In", "Inherits", "Integer", "Interface",
+            "Is", "IsNot", "Let", "Lib", "Like", "Long", "Loop", "Me", "Mod", "Module",
+            "MustInherit", "MustOverride", "MyBase", "MyClass", "Namespace", "New", "Next",
+            "Not", "Nothing", "NotInheritable", "NotOverridable", "Object", "Of", "On",
+            "Option", "Optional", "Or", "OrElse", "Overloads", "Overridable", "Overrides",
+            "ParamArray", "Partial", "Private", "Property", "Protected", "Public", "RaiseEvent",
+            "ReadOnly", "ReDim", "REM", "RemoveHandler", "Resume", "Return", "Select", "Set",
+            "Shadows", "Shared", "Short", "Single", "Static", "Step", "Stop", "String",
+            "Structure", "Sub", "SyncLock", "Then", "Throw", "To", "True", "Try", "TryCast",
+            "TypeOf", "Until", "Using", "When", "While", "Widening", "With", "WithEvents",
+            "WriteOnly", "Xor"
+        ),
+        LanguageMode.COBOL to setOf(
+            "ACCEPT", "ACCESS", "ADD", "ADDRESS", "ADVANCING", "AFTER", "ALL", "ALPHANUMERIC",
+            "ALTER", "ALTERNATE", "AND", "ARE", "AREA", "AREAS", "ARITHMETIC", "AS", "ASCENDING",
+            "ASCII", "ASSIGN", "AT", "AUTHOR", "BINARY", "BLANK", "BLOCK", "BOTTOM", "BY",
+            "CALL", "CANCEL", "CD", "CF", "CH", "CHARACTER", "CHARACTERS", "CLASS-DEF",
+            "CLOCK-UNITS", "CLOSE", "COBOL", "CODE", "COLLATING", "COLUMN", "COMMA",
+            "COMMON", "COMMUNICATION", "COMP", "COMP-1", "COMP-2", "COMP-3", "COMPUTATIONAL",
+            "COMPUTE", "CONFIGURATION", "CONTAINS", "CONTENT", "CONTINUE", "CONTROL", "CONVERTING",
+            "COPY", "CORR", "CORRESPONDING", "COUNT", "CURRENCY", "DATA", "DATE", "DATE-COMPILED",
+            "DATE-WRITTEN", "DAY", "DEBUG", "DEBUGGING", "DECLARATIVES", "DELETE",
+            "DELIMITED", "DELIMITER", "DEPENDING", "DESCENDING", "DESTINATION", "DETAIL",
+            "DISPLAY", "DIVIDE", "DIVISION", "DOWN", "DUPLICATES", "DYNAMIC", "EGI", "ELSE",
+            "EMI", "ENABLE", "END", "END-ADD", "END-CALL", "END-COMPUTE", "END-DELETE",
+            "END-DIVIDE", "END-EVALUATE", "END-IF", "END-MULTIPLY", "END-OF-PAGE", "END-PERFORM",
+            "END-READ", "END-RECEIVE", "END-RETURN", "END-REWRITE", "END-SEARCH", "END-START",
+            "END-STRING", "END-SUBTRACT", "END-UNSTRING", "END-WRITE", "ENTER", "ENVIRONMENT",
+            "EOP", "EQUAL", "ERROR", "ESI", "EVALUATE", "EXCEPTION", "EXCLUSIVE", "EXIT",
+            "EXTEND", "EXTERNAL", "FD", "FILE", "FILE-CONTROL", "FILLER", "FINAL", "FIRST",
+            "FOOTING", "FOR", "FROM", "FUNCTION", "GENERATE", "GIVING", "GLOBAL", "GO",
+            "GOBACK", "GREATER", "GROUP", "HEADING", "HIGH-VALUE", "HIGH-VALUES", "I-O",
+            "I-O-CONTROL", "IDENTIFICATION", "IF", "IN", "INDEX", "INDEXED", "INDICATE",
+            "INITIAL", "INITIATE", "INPUT", "INPUT-OUTPUT", "INSPECT", "INSTALLATION",
+            "INTO", "INVALID", "IS", "JUST", "JUSTIFIED", "KEY", "LABEL", "LAST", "LEADING",
+            "LEFT", "LENGTH", "LESS", "LIMIT", "LIMITS", "LINAGE", "LINE", "LINE-COUNTER",
+            "LINES", "LINKAGE", "LOCK", "LOW-VALUE", "LOW-VALUES", "MEMORY", "MERGE", "MESSAGE",
+            "MODE", "MODULES", "MOVE", "MULTIPLE", "MULTIPLY", "NATIONAL", "NATIVE", "NEGATIVE",
+            "NEXT", "NO", "NOT", "NULL", "NULLS", "NUMBER", "NUMERIC", "OBJECT-COMPUTER",
+            "OCCURS", "OF", "OFF", "OFFSET", "OMITTED", "ON", "OPEN", "OPTIONAL", "OR",
+            "ORDER", "ORGANIZATION", "OTHER", "OUTPUT", "OVERFLOW", "PACKED-DECIMAL", "PADDING",
+            "PAGE", "PAGE-COUNTER", "PERFORM", "PF", "PH", "PIC", "PICTURE", "PLUS", "POINTER",
+            "POSITION", "POSITIVE", "PRINTING", "PROCEDURE", "PROCEDURES", "PROCEED", "PROCESS",
+            "PROGRAM", "PROGRAM-ID", "PROGRAM-STATUS", "PROHIBITED", "PROTECTED", "PURGE", "QUEUE",
+            "QUOTE", "QUOTES", "RANDOM", "RD", "READ", "RECEIVE", "RECORD", "RECORDS",
+            "REDEFINES", "REEL", "REFERENCE", "RELATIVE", "RELEASE", "RELOAD", "REMAINDER",
+            "REMOVAL", "RENAMES", "REPLACE", "REPLACING", "REPORT", "REPORTING", "REPORTS",
+            "REPOSITORY", "RERUN", "RESERVE", "RESET", "RETURN", "RETURNING", "REVERSED",
+            "REWIND", "REWRITE", "RF", "RH", "RIGHT", "ROUNDED", "RUN", "SAME", "SD",
+            "SEARCH", "SECTION", "SECURITY", "SEGMENT", "SEGMENT-LIMIT", "SELECT", "SEND",
+            "SENTENCE", "SEPARATE", "SEQUENCE", "SEQUENTIAL", "SET", "SHARED", "SIGN",
+            "SIZE", "SORT", "SORT-MERGE", "SOURCE", "SOURCE-COMPUTER", "SPACE", "SPACES",
+            "SPECIAL-NAMES", "STANDARD", "STANDARD-1", "STANDARD-2", "START", "STATUS", "STOP",
+            "STRING", "SUB-QUEUE-1", "SUB-QUEUE-2", "SUB-QUEUE-3", "SUBTRACT", "SUM", "SUPPRESS",
+            "SYMBOLIC", "SYNC", "SYNCHRONIZED", "TABLE", "TALLYING", "TAPE", "TERMINAL",
+            "TERMINATE", "TEST", "TEXT", "THAN", "THEN", "THROUGH", "THRU", "TIME", "TIMES",
+            "TO", "TOP", "TRAILING", "TRUE", "TYPE", "UNIT", "UNSTRING", "UNTIL", "UP",
+            "UPON", "USAGE", "USE", "USING", "VALUE", "VALUES", "VARYING", "WHEN", "WITH",
+            "WORDS", "WORKING-STORAGE", "WRITE", "ZERO", "ZEROES", "ZEROS"
+        ),
+        LanguageMode.SMALLTALK to setOf(
+            "self", "super", "nil", "true", "false", "thisContext", "ifTrue:", "ifFalse:",
+            "ifTrue:ifFalse:", "whileTrue:", "whileFalse:", "to:do:", "and:", "or:", "new",
+            "value", "do:", "collect:", "select:", "reject:", "detect:", "inject:into:", "at:",
+            "at:put:", "class", "isNil", "notNil"
+        ),
+        LanguageMode.POSTSCRIPT to setOf(
+            "def", "dup", "exch", "pop", "copy", "index", "roll", "clear", "count", "mark",
+            "cleartomark", "counttomark", "add", "sub", "mul", "div", "idiv", "mod", "abs",
+            "neg", "ceiling", "floor", "round", "truncate", "sqrt", "exp", "ln", "log", "sin",
+            "cos", "atan", "rand", "srand", "if", "ifelse", "for", "repeat", "forall",
+            "loop", "exit", "stop", "stopped", "newpath", "moveto", "lineto", "curveto",
+            "arc", "closepath", "stroke", "fill", "showpage", "grestore", "gsave", "bind",
+            "load", "store", "get", "put", "begin", "end"
+        ),
+        LanguageMode.D to setOf(
+            "abstract", "alias", "align", "asm", "assert", "auto", "body", "bool", "break",
+            "byte", "case", "cast", "catch", "cdouble", "cent", "cfloat", "char", "class",
+            "const", "continue", "creal", "dchar", "debug", "default", "delegate", "delete",
+            "deprecated", "do", "double", "else", "enum", "export", "extern", "false", "final",
+            "finally", "float", "for", "foreach", "foreach_reverse", "function", "goto", "idouble",
+            "if", "ifloat", "import", "in", "inout", "int", "interface", "invariant", "ireal",
+            "is", "lazy", "long", "macro", "mixin", "module", "new", "nothrow", "null", "out",
+            "override", "package", "pragma", "private", "protected", "public", "pure", "real",
+            "ref", "return", "scope", "shared", "short", "static", "struct", "super", "switch",
+            "synchronized", "template", "this", "throw", "true", "try", "typedef", "typeid",
+            "typeof", "ubyte", "ucent", "uint", "ulong", "union", "unittest", "ushort", "version",
+            "void", "volatile", "wchar", "while", "with", "__FILE__", "__LINE__"
+        ),
+        LanguageMode.NIM to setOf(
+            "addr", "and", "as", "asm", "bind", "block", "break", "case", "cast", "concept",
+            "const", "continue", "converter", "defer", "discard", "distinct", "div", "do",
+            "elif", "else", "end", "enum", "except", "export", "finally", "for", "from", "func",
+            "if", "import", "include", "interface", "is", "isnot", "iterator", "let", "macro",
+            "method", "mixin", "mod", "nil", "not", "notin", "object", "of", "or", "out",
+            "proc", "ptr", "raise", "ref", "return", "shl", "shr", "static", "template", "try",
+            "tuple", "type", "using", "when", "while", "xor", "yield"
+        ),
+        LanguageMode.FORTH to setOf(
+            ":", ";", "variable", "constant", "create", "does>", "if", "else", "then", "begin",
+            "until", "again", "while", "repeat", "do", "loop", "+loop", "i", "j", "leave", "exit",
+            "recurse", "dup", "drop", "swap", "over", "rot", "nip", "tuck", "emit",
+            "cr", "space", "cells", "cell+", "@", "!", "+!", "and", "or", "xor", "invert",
+            "=", "<", ">", "0=", "0<", "0>"
+        ),
+        LanguageMode.ACTIONSCRIPT to setOf(
+            "break", "case", "catch", "class", "const", "continue", "default", "delete", "do",
+            "else", "extends", "false", "finally", "for", "function", "if", "implements",
+            "import", "in", "instanceof", "interface", "internal", "is", "namespace", "new",
+            "null", "package", "private", "protected", "public", "return", "super", "switch",
+            "this", "throw", "true", "try", "typeof", "use", "var", "void", "while", "with",
+            "get", "set", "override", "final", "dynamic", "native", "static"
+        ),
+        LanguageMode.NFO to emptySet()
     )
 
     private val TYPES: Map<LanguageMode, Set<String>> = mapOf(
@@ -246,6 +514,56 @@ object SyntaxHighlighter {
                 LangRule(listOf("--"), "--[[" to "]]", listOf('"', '\''), keywords, emptySet())
             LanguageMode.MAKEFILE ->
                 LangRule(listOf("#"), null, emptyList(), keywords, emptySet())
+            LanguageMode.TOML ->
+                LangRule(listOf("#"), null, listOf('"', '\''), keywords, emptySet())
+            LanguageMode.POWERSHELL ->
+                LangRule(listOf("#"), "<#" to "#>", listOf('"', '\'', '`'), keywords, emptySet())
+            LanguageMode.PERL ->
+                LangRule(listOf("#"), null, listOf('"', '\''), keywords, emptySet())
+            LanguageMode.CMAKE ->
+                LangRule(listOf("#"), null, listOf('"'), keywords, emptySet(), caseInsensitive = true)
+            LanguageMode.VHDL, LanguageMode.VERILOG ->
+                LangRule(listOf("--"), null, listOf('"'), keywords, emptySet(), caseInsensitive = true)
+            LanguageMode.ASSEMBLY ->
+                LangRule(listOf(";"), "/*" to "*/", listOf('\'', '"'), keywords, emptySet(), caseInsensitive = true)
+            LanguageMode.AUTOIT ->
+                LangRule(listOf(";"), "#cs" to "#ce", listOf('"', '\''), keywords, emptySet(), caseInsensitive = true)
+            LanguageMode.COFFEESCRIPT ->
+                LangRule(listOf("#"), "###" to "###", listOf('"', '\'', '`'), keywords, emptySet())
+            LanguageMode.LISP, LanguageMode.SCHEME ->
+                LangRule(listOf(";"), "#|" to "|#", listOf('"'), keywords, emptySet(), caseInsensitive = true)
+            LanguageMode.PASCAL, LanguageMode.ADA ->
+                LangRule(listOf("//", "--"), "{" to "}", listOf('\'', '"'), keywords, emptySet(), caseInsensitive = true)
+            LanguageMode.FORTRAN ->
+                LangRule(listOf("!"), null, listOf('"', '\''), keywords, emptySet(), caseInsensitive = true)
+            LanguageMode.HASKELL ->
+                LangRule(listOf("--"), "{-" to "-}", listOf('"', '\''), keywords, emptySet())
+            LanguageMode.ERLANG ->
+                LangRule(listOf("%"), null, listOf('"', '\''), keywords, emptySet())
+            LanguageMode.R ->
+                LangRule(listOf("#"), null, listOf('"', '\'', '`'), keywords, emptySet())
+            LanguageMode.TCL ->
+                LangRule(listOf("#"), null, listOf('"'), keywords, emptySet())
+            LanguageMode.MATLAB ->
+                LangRule(listOf("%"), "%{" to "%}", listOf('\''), keywords, emptySet(), caseInsensitive = true)
+            LanguageMode.OBJECTIVE_C ->
+                LangRule(listOf("//"), "/*" to "*/", listOf('"', '\''), keywords, emptySet())
+            LanguageMode.VISUALBASIC ->
+                LangRule(listOf("'", "REM"), null, listOf('"'), keywords, emptySet(), caseInsensitive = true)
+            LanguageMode.COBOL ->
+                LangRule(emptyList(), null, listOf('\'', '"'), keywords, emptySet(), caseInsensitive = true)
+            LanguageMode.SMALLTALK ->
+                LangRule(listOf("\""), null, listOf('\''), keywords, emptySet())
+            LanguageMode.POSTSCRIPT ->
+                LangRule(listOf("%"), null, listOf('"', '('), keywords, emptySet())
+            LanguageMode.D ->
+                LangRule(listOf("//"), "/*" to "*/", listOf('"', '\'', '`'), keywords, emptySet())
+            LanguageMode.NIM ->
+                LangRule(listOf("#"), "#[" to "]#", listOf('"', '\'', '`'), keywords, emptySet())
+            LanguageMode.FORTH ->
+                LangRule(listOf("\\"), null, emptyList(), keywords, emptySet(), caseInsensitive = true)
+            LanguageMode.ACTIONSCRIPT ->
+                LangRule(listOf("//"), "/*" to "*/", listOf('"', '\''), keywords, emptySet())
             LanguageMode.SQL ->
                 LangRule(listOf("--"), "/*" to "*/", listOf('\''), keywords, emptySet(), caseInsensitive = true)
             else -> LangRule(emptyList(), null, emptyList(), keywords, emptySet())
@@ -259,9 +577,36 @@ object SyntaxHighlighter {
             LanguageMode.JSON -> tokenizeJson(text)
             LanguageMode.CSS -> tokenizeCss(text)
             LanguageMode.YAML -> tokenizeYaml(text)
-            LanguageMode.NORMAL_TEXT, LanguageMode.TEX -> emptyList()
+            LanguageMode.DIFF -> tokenizeDiff(text)
+            LanguageMode.NORMAL_TEXT, LanguageMode.TEX, LanguageMode.NFO -> emptyList()
             else -> tokenizeGeneric(text, rulesFor(mode))
         }
+    }
+
+    /** Diff/patch: per-line markers (+, -, @@, diff/index/---/+++ headers). */
+    private fun tokenizeDiff(text: String): List<SyntaxToken> {
+        val tokens = mutableListOf<SyntaxToken>()
+        var lineStart = 0
+        val n = text.length
+        while (lineStart <= n) {
+            val lineEnd = text.indexOf('\n', lineStart).let { if (it < 0) n else it }
+            if (lineEnd > lineStart) {
+                val c = text[lineStart]
+                val kind = when {
+                    text.startsWith("@@", lineStart) -> TokenKind.HEADING
+                    text.startsWith("diff ", lineStart) || text.startsWith("index ", lineStart) ||
+                        text.startsWith("--- ", lineStart) || text.startsWith("+++ ", lineStart) ||
+                        text.startsWith("Index: ", lineStart) -> TokenKind.COMMENT
+                    c == '+' -> TokenKind.STRING
+                    c == '-' -> TokenKind.ATTRIBUTE
+                    else -> null
+                }
+                if (kind != null) tokens.add(SyntaxToken(lineStart, lineEnd, kind))
+            }
+            if (lineEnd >= n) break
+            lineStart = lineEnd + 1
+        }
+        return tokens
     }
 
     private fun tokenizeGeneric(text: String, rule: LangRule): List<SyntaxToken> {

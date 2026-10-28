@@ -43,4 +43,28 @@ class MarkdownRendererTest {
     fun escapesRawHtml() {
         assertEquals("&lt;script&gt;", MarkdownRenderer.escape("<script>"))
     }
+
+    @Test
+    fun linkWithAttributeInjectionIsNeutralized() {
+        val html = MarkdownRenderer.render("[x](https://a.com\" onmouseover=\"alert(1))")
+        assertTrue("attribute must not break out", !html.contains("onmouseover="))
+        assertTrue(html.contains("%22"))
+    }
+
+    @Test
+    fun linkWithDangerousSchemeIsRejected() {
+        for (scheme in listOf("javascript", "data", "file", "vbscript")) {
+            val html = MarkdownRenderer.render("[x](${scheme}:alert(1))")
+            assertTrue("scheme $scheme must not survive", !html.contains("${scheme}:"))
+            assertTrue(html.contains(">x<"))
+        }
+    }
+
+    @Test
+    fun linkSafeSchemesRender() {
+        val html = MarkdownRenderer.render("[docs](https://example.com/a b)")
+        assertTrue(html.contains("href=\"https://example.com/a%20b\""))
+        val mail = MarkdownRenderer.render("[me](mailto:a@b.c)")
+        assertTrue(mail.contains("href=\"mailto:a@b.c\""))
+    }
 }

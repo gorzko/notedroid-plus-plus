@@ -75,10 +75,30 @@ object MarkdownRenderer {
         r = Regex("\\*\\*([^*]+)\\*\\*").replace(r) { "<b>${it.groupValues[1]}</b>" }
         r = Regex("\\*([^*]+)\\*").replace(r) { "<i>${it.groupValues[1]}</i>" }
         r = Regex("\\[([^]]+)]\\(([^)]+)\\)").replace(r) { m ->
-            val url = m.groupValues[2].replace("\"", "%22")
-            "<a href=\"" + url + "\">" + m.groupValues[1] + "</a>"
+            val url = sanitizeUrl(m.groupValues[2])
+            if (url != null) "<a href=\"" + url + "\">" + m.groupValues[1] + "</a>" else m.groupValues[1]
         }
         return r
+    }
+
+    /**
+     * Percent-encode attribute-breaking characters and allow only safe URL
+     * schemes (http, https, mailto, relative). javascript:/data:/file: and
+     * anything else are rejected by returning null (fail closed).
+     */
+    internal fun sanitizeUrl(raw: String): String? {
+        val trimmed = raw.trim()
+        val scheme = trimmed.substringBefore(':', "").lowercase()
+        val allowedScheme = scheme.isEmpty() || scheme == "http" || scheme == "https" || scheme == "mailto"
+        if (!allowedScheme) return null
+        return trimmed
+            .replace("%", "%25")
+            .replace("&", "%26")
+            .replace("\"", "%22")
+            .replace("<", "%3C")
+            .replace(">", "%3E")
+            .replace(" ", "%20")
+            .replace("'", "%27")
     }
 
     fun escape(s: String): String = s

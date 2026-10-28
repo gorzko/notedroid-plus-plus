@@ -43,8 +43,8 @@ import com.notedroidplusplus.app.core.SaveAsCoordinator
 import com.notedroidplusplus.app.core.WindowSort
 import com.notedroidplusplus.app.core.SessionStore
 import com.notedroidplusplus.app.core.TabBar
+import com.notedroidplusplus.app.core.UdlExportQueue
 import com.notedroidplusplus.app.core.ChangeHistory
-import com.notedroidplusplus.app.core.TabBar
 import com.notedroidplusplus.app.core.TextUtils
 import com.notedroidplusplus.app.databinding.ActivityMainBinding
 import com.notedroidplusplus.app.editing.CodeEditText
@@ -96,7 +96,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private lateinit var recentFiles: RecentFiles
     private lateinit var sessionStore: SessionStore
     private lateinit var udlStore: UserDefinedLanguageStore
-    private var pendingUdlExportName: String? = null
+    private val udlExportQueue = UdlExportQueue()
     private var scaleDetector: ScaleGestureDetector? = null
 
     data class TabSession(
@@ -186,8 +186,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private val udlExportLauncher =
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
             uri ?: return@registerForActivityResult
-            val name = pendingUdlExportName ?: return@registerForActivityResult
-            pendingUdlExportName = null
+            val name = udlExportQueue.consumeLatest() ?: return@registerForActivityResult
             val udl = udlStore.findByName(name)
             if (udl == null) {
                 Toast.makeText(this, R.string.udl_not_found, Toast.LENGTH_SHORT).show()
@@ -1841,7 +1840,12 @@ class MainActivity : AppCompatActivity(), PluginHost {
         AlertDialog.Builder(this)
             .setTitle(R.string.udl_export)
             .setItems(list.map { it.name }.toTypedArray()) { _, which ->
-                pendingUdlExportName = list[which].name
+                // Single-flight (#71): refuse a new export launch while one is pending
+                if (udlExportQueue.pending) {
+                    Toast.makeText(this, R.string.udl_export_in_progress, Toast.LENGTH_SHORT).show()
+                    return@setItems
+                }
+                udlExportQueue.begin(list[which].name)
                 udlExportLauncher.launch("${list[which].name}.udl.json")
             }
             .setNegativeButton(R.string.cancel, null)

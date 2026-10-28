@@ -43,4 +43,5 @@
     <string name="yes">Да</string>
     <string name="no">Нет</string>
     <string name="cancel">Отмена</string>
+    <string name="udl_export_in_progress">An export is already in progress</string>
 </resources>

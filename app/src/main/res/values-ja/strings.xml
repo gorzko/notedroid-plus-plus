@@ -43,4 +43,5 @@
     <string name="yes">はい</string>
     <string name="no">いいえ</string>
     <string name="cancel">キャンセル</string>
+    <string name="udl_export_in_progress">An export is already in progress</string>
 </resources>

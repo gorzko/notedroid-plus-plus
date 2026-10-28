@@ -43,4 +43,5 @@
     <string name="yes">是</string>
     <string name="no">否</string>
     <string name="cancel">取消</string>
+    <string name="udl_export_in_progress">An export is already in progress</string>
 </resources>

@@ -49,7 +49,10 @@ Android port of Notepad++ ("NoteDroid++"): Kotlin, Material 3, multi-tab code ed
 ## Workflow expectations
 
 - Commit focused units; push only to the task branch (`vibe/notedroid-plus-plus-android`); CI must be green on the final commit before claiming work is done.
+- **PR lifecycle:** open PRs as draft; once CI is green on the final head commit, mark the PR **ready for review** (`gh pr ready <n>`) — do not leave a green draft sitting.
+- **Merge policy:** when the reviewer approves with no remarks, merge the PR immediately. When the reviewer approves but mentions non-blocking issues, the worker decides how to handle each (fix in a follow-up commit or defer to a GitHub issue with a link), posts the fixed-vs-deferred summary comment, and then merges. Only re-request review when a new blocking concern is introduced; do not wait for re-approval after non-blocking follow-ups.
 - Deferred work becomes a GitHub issue (1 thing = 1 issue; group only strictly related items) with Summary/Details/Acceptance sections; check for duplicates across **all** issue states first.
+- **Issue registration does basic reconnaissance only.** The registering agent records reproduction steps, observed vs expected behavior, and where the code likely lives — it does NOT deep-diagnose root causes, propose full fixes, or pre-assign fix strategies. Deep diagnosis is the job of the agent that picks up the issue.
 - Keep README and PR descriptions matching shipped reality — never overclaim features or test counts.
 - After addressing reviews, post a comment on the PR summarizing fixed vs deferred (with issue links).
 

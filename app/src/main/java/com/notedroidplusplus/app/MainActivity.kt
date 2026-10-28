@@ -395,12 +395,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     /** Record a whole-buffer replacement as one undo step built from a minimal insert/delete pair. */
     private fun pushWholeTextChange(s: TabSession, before: String, after: String) {
-        val commonPrefix = CommonPrefix.of(before, after)
-        val commonSuffix = CommonSuffix.of(before, after, commonPrefix)
-        val delStart = commonPrefix
-        val delEnd = before.length - commonSuffix
-        val insStart = commonPrefix
-        val insEnd = after.length - commonSuffix
+        var prefix = 0
+        val maxPrefix = minOf(before.length, after.length)
+        while (prefix < maxPrefix && before[prefix] == after[prefix]) prefix++
+        var suffix = 0
+        val maxSuffix = minOf(before.length, after.length) - prefix
+        while (suffix < maxSuffix && before[before.length - 1 - suffix] == after[after.length - 1 - suffix]) suffix++
+        val delStart = prefix
+        val delEnd = before.length - suffix
+        val insStart = prefix
+        val insEnd = after.length - suffix
         val deleted = if (delEnd > delStart) before.substring(delStart, delEnd) else ""
         val inserted = if (insEnd > insStart) after.substring(insStart, insEnd) else ""
         val edits = buildList {

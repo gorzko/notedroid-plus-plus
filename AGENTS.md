@@ -55,6 +55,5 @@ Android port of Notepad++ ("NoteDroid++"): Kotlin, Material 3, multi-tab code ed
 
 ## Open backlog (as of last session)
 
-- #6: JSON integer precision beyond 2^53 in prettify/minify
 - #8: On-device verification of gutter/bracket geometry
-- #11: Undo coalescing (edit ranges instead of whole-document snapshots)
+- #23: Full Notepad++ localization port + language-file gap analysis

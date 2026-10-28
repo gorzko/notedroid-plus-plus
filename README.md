@@ -52,8 +52,8 @@ icon, dark theme, back/forward gesture support).
 - **Content-based language detection**: files without a known extension are
   sniffed (shebang, DOCTYPE, JSON/YAML/INI structure, Markdown markers, SQL)
   from a bounded 8 KB prefix; extension detection stays the default
-- **Edit-based undo**: typing runs coalesce into word/line steps (per-tab,
-  capped at 200) instead of whole-document snapshots
+- **Edit-based undo**: contiguous typing and backspace runs coalesce into
+  single steps (per-tab, capped at 200) instead of whole-document snapshots
 
 **Plugin support**
 - v1 plugin API (`PluginHost`, `PluginCommand`, `PluginDescriptor`)

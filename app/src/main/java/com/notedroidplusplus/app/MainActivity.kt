@@ -540,10 +540,12 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.addTextChangedListener(tw)
         if (before != text) {
             pushWholeTextChange(s, before, text)
+            s.changeHistory.reconcile(text, s.baselineText.ifEmpty { text })
             s.document = s.document.copy(text = text, modified = true)
         } else {
             s.document = s.document.copy(text = text)
         }
+        editor.changeHistory = s.changeHistory.markedLines()
         refreshTabLabels()
         updateStatus()
     }

@@ -35,7 +35,7 @@ import com.notedroidplusplus.app.plugins.PluginImportActivity
 import com.notedroidplusplus.app.plugins.PluginRegistry
 import com.notedroidplusplus.app.search.SearchHit
 import com.notedroidplusplus.app.search.findAll
-import com.notedroidplusplus.app.preview.PreviewActivity
+import com.notedroidplusplus.app.preview.PreviewView
 import com.notedroidplusplus.app.search.FindOptions
 import com.notedroidplusplus.app.search.findNext
 import com.notedroidplusplus.app.search.findPrev
@@ -527,6 +527,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun activateTab(index: Int) {
         if (index < 0 || index >= tabs.size) return
+        if (previewMode != null) closePreview()
         activeSession()?.let { it.caret = editor.selectionStart }
         syncActiveDocument()
         active = index
@@ -858,13 +859,50 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .onFailure { Toast.makeText(this, errorRes, Toast.LENGTH_SHORT).show() }
     }
 
+    private var previewMode: PreviewView.Mode? = null
+    private var previewView: PreviewView? = null
+
     private fun preview() {
-        val s = activeSession() ?: return
-        when (s.document.language) {
-            LanguageMode.MARKDOWN -> PreviewActivity.start(this, PreviewActivity.Mode.MARKDOWN, editor.text?.toString() ?: "")
-            LanguageMode.HTML -> PreviewActivity.start(this, PreviewActivity.Mode.HTML, editor.text?.toString() ?: "")
-            else -> Toast.makeText(this, R.string.tool_preview_only, Toast.LENGTH_SHORT).show()
+        if (previewMode != null) {
+            closePreview()
+            return
         }
+        val s = activeSession() ?: return
+        syncActiveDocument()
+        val content = s.document.text
+        val mode = PreviewView.modeFor(
+            content,
+            s.document.language == LanguageMode.MARKDOWN,
+            s.document.language == LanguageMode.HTML
+        )
+        if (mode == null) {
+            Toast.makeText(this, R.string.tool_preview_only, Toast.LENGTH_SHORT).show()
+            return
+        }
+        openPreview(mode, content)
+    }
+
+    private fun openPreview(mode: PreviewView.Mode, content: String) {
+        val container = binding.previewContainer
+        val v = previewView ?: PreviewView(this).also { previewView = it }
+        if (v.parent == null) container.addView(
+            v,
+            android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        v.render(content, mode)
+        previewMode = mode
+        container.visibility = View.VISIBLE
+        binding.editor.visibility = View.GONE
+    }
+
+    private fun closePreview() {
+        previewView?.close()
+        binding.previewContainer.visibility = View.GONE
+        binding.editor.visibility = View.VISIBLE
+        previewMode = null
     }
 
     private fun transformCase(op: (String, Int, Int) -> String) {

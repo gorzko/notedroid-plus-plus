@@ -29,6 +29,7 @@ import com.notedroidplusplus.app.core.TextUtils
 import com.notedroidplusplus.app.databinding.ActivityMainBinding
 import com.notedroidplusplus.app.editing.CodeEditText
 import com.notedroidplusplus.app.editing.ContentSniffer
+import com.notedroidplusplus.app.editing.MarkdownActions
 import com.notedroidplusplus.app.files.FindInFilesActivity
 import com.notedroidplusplus.app.plugins.PluginHost
 import com.notedroidplusplus.app.plugins.PluginImportActivity
@@ -196,6 +197,18 @@ class MainActivity : AppCompatActivity(), PluginHost {
         binding.btnFind.setOnClickListener { toggleFindPanel(false) }
         binding.btnPreview.setOnClickListener { preview() }
         binding.btnPrettify.setOnClickListener { prettify() }
+        binding.mdBold.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.bold(t, s, e) } }
+        binding.mdItalic.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.italic(t, s, e) } }
+        binding.mdStrike.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.strike(t, s, e) } }
+        binding.mdCode.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.inlineCode(t, s, e) } }
+        binding.mdH1.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.heading(t, s, e, 1) } }
+        binding.mdH2.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.heading(t, s, e, 2) } }
+        binding.mdH3.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.heading(t, s, e, 3) } }
+        binding.mdBulletList.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.list(t, s, e, ordered = false) } }
+        binding.mdNumberedList.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.list(t, s, e, ordered = true) } }
+        binding.mdLink.setOnClickListener { promptLink() }
+        binding.mdCodeBlock.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.codeBlock(t, s, e) } }
+        binding.mdTable.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.table(t, s) } }
         binding.btnFindNext.setOnClickListener { findNextMatch(down = true) }
         binding.btnFindPrev.setOnClickListener { findNextMatch(down = false) }
         binding.btnFindClose.setOnClickListener { binding.findPanel.visibility = View.GONE; findPanelOpen = false }
@@ -585,6 +598,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
             else -> "Unix (LF)"
         }
         binding.statusLanguage.text = s?.document?.language?.displayName ?: ""
+        val md = s?.document?.language == LanguageMode.MARKDOWN && previewMode == null
+        binding.markdownToolbar.visibility = if (md) View.VISIBLE else View.GONE
     }
 
     // ---- Save / Close ----
@@ -903,6 +918,33 @@ class MainActivity : AppCompatActivity(), PluginHost {
         binding.previewContainer.visibility = View.GONE
         binding.editor.visibility = View.VISIBLE
         previewMode = null
+    }
+
+    private fun applyMarkdown(op: (String, Int, Int) -> MarkdownActions.Result) {
+        if (previewMode != null) return
+        val text = editor.text?.toString() ?: return
+        val s = editor.selectionStart.coerceAtLeast(0)
+        val e = editor.selectionEnd.coerceAtLeast(s)
+        val r = op(text, s, e)
+        if (r.text == text) return
+        editor.text?.replace(0, text.length, r.text)
+        editor.setSelection(r.newStart.coerceIn(0, r.text.length), r.newEnd.coerceIn(0, r.text.length))
+    }
+
+    private fun promptLink() {
+        if (previewMode != null) return
+        val input = EditText(this).apply {
+            hint = getString(R.string.md_link_url_hint)
+            inputType = android.text.InputType.TYPE_TEXT_VARIATION_URI
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.md_link_prompt)
+            .setView(input)
+            .setPositiveButton(R.string.md_link_ok) { _, _ ->
+                applyMarkdown { t, s, e -> MarkdownActions.link(t, s, e, input.text.toString()) }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun transformCase(op: (String, Int, Int) -> String) {

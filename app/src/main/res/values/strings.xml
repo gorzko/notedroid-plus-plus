@@ -94,4 +94,19 @@
     <string name="encoding_title">Choose encoding</string>
     <string name="tabs_kept_dirty">%1$d tab(s) with unsaved changes were kept</string>
     <string name="action_zoom_out">Zoom Out</string>
+    <string name="md_bold">Bold</string>
+    <string name="md_italic">Italic</string>
+    <string name="md_strike">Strikethrough</string>
+    <string name="md_code">Code</string>
+    <string name="md_h1">H1</string>
+    <string name="md_h2">H2</string>
+    <string name="md_h3">H3</string>
+    <string name="md_bullet_list">Bullet list</string>
+    <string name="md_numbered_list">Numbered list</string>
+    <string name="md_link">Link</string>
+    <string name="md_code_block">Code block</string>
+    <string name="md_table">Table</string>
+    <string name="md_link_url_hint">https://example.com</string>
+    <string name="md_link_prompt">Link URL</string>
+    <string name="md_link_ok">Insert</string>
 </resources>

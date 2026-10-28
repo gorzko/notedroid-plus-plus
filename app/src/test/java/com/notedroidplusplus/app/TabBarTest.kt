@@ -35,10 +35,13 @@ class TabBarTest {
     fun elideLabel() {
         assertEquals("README.md", TabBar.elideLabel("README.md", 0))
         assertEquals("README.md", TabBar.elideLabel("README.md", 20))
+        // elided labels end with the ellipsis codepoint and keep maxChars-1 prefix
         val elided = TabBar.elideLabel("README.md", 4)
-        assertEquals("Rea" + "\u2026", elided)
-        // explicit ellipsis codepoint check, independent of source escapes
-        assertEquals("Rea" + String(charArrayOf(0x2026.toChar())), elided)
-        assertEquals(String(charArrayOf(0x2026.toChar())), TabBar.elideLabel("README.md", 1))
+        assertEquals(4, elided.length)
+        assertEquals("Rea", elided.take(3))
+        assertEquals(0x2026, elided.last().code)
+        val single = TabBar.elideLabel("README.md", 1)
+        assertEquals(1, single.length)
+        assertEquals(0x2026, single.last().code)
     }
 }

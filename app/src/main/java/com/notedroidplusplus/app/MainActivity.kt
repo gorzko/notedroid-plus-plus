@@ -31,12 +31,16 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.documentfile.provider.DocumentFile
 import com.google.android.material.tabs.TabLayout
 import com.notedroidplusplus.app.core.Document
 import com.notedroidplusplus.app.core.FileManager
 import com.notedroidplusplus.app.core.RecentFiles
 import com.notedroidplusplus.app.core.RecentFilesSettings
+import com.notedroidplusplus.app.core.MacroRecorder
+import com.notedroidplusplus.app.core.MacroStore
 import com.notedroidplusplus.app.core.SaveAsCoordinator
+import com.notedroidplusplus.app.core.WindowSort
 import com.notedroidplusplus.app.core.SessionStore
 import com.notedroidplusplus.app.core.TextUtils
 import com.notedroidplusplus.app.databinding.ActivityMainBinding
@@ -86,7 +90,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
         var tab: TabLayout.Tab?,
         val history: com.notedroidplusplus.app.core.UndoHistory = com.notedroidplusplus.app.core.UndoHistory(),
         var caret: Int = 0,
-        var readOnly: Boolean = false
+        var readOnly: Boolean = false,
+        var lastModifiedAt: Long = 0L,
+        var monitoring: Boolean = false
     )
 
     private val tabs = mutableListOf<TabSession>()
@@ -606,6 +612,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         if (text != s.document.text) {
             val modified = s.document.uri != null || text.isNotEmpty()
             s.document = s.document.copy(text = text, modified = modified)
+            s.lastModifiedAt = System.currentTimeMillis()
         }
         refreshTabLabels()
         updateStatus()
@@ -757,6 +764,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun showTabCloseMenu() {
         popup {
             item(getString(R.string.action_close)) { closeTabAt(active) }
+            activeSession()?.let { s -> item(getString(R.string.action_open_containing_folder)) { openContainingFolder(s) } }
             item(getString(R.string.action_close_others)) {
                 val keep = active
                 val dirty = tabs.count { it.document.modified && tabs.indexOf(it) != keep }
@@ -1292,6 +1300,306 @@ class MainActivity : AppCompatActivity(), PluginHost {
         }
     }
 
+    private fun showHelpMenu() = popup {
+        item(getString(R.string.help_about)) { showAbout() }
+        item(getString(R.string.help_manual)) { openLink("https://npp-user-manual.org/") }
+        item(getString(R.string.help_project_page)) { openLink("https://github.com/gorzko/notedroid-plus-plus") }
+        item(getString(R.string.help_debug_info)) { showDebugInfo() }
+    }
+
+    private fun showAbout() {
+        val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
+        AlertDialog.Builder(this)
+            .setTitle(R.string.help_about)
+            .setMessage(getString(R.string.about_message, version))
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun openLink(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+        } catch (e: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, R.string.no_browser, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun showDebugInfo() {
+        val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
+        val s = activeSession()
+        syncActiveDocument()
+        val info = buildString {
+            appendLine("App: NoteDroid++ $version")
+            appendLine("Package: $packageName")
+            appendLine("Android SDK: ${android.os.Build.VERSION.SDK_INT} (${android.os.Build.VERSION.RELEASE})")
+            appendLine("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+            appendLine("Theme: ${prefs.getString("theme_name", "Default")}")
+            appendLine("Open tabs: ${tabs.size}")
+            appendLine("Active file: ${s?.document?.fileName ?: "-"}")
+            appendLine("Language: ${s?.document?.language?.displayName ?: "-"}")
+            appendLine("Encoding: ${s?.document?.encoding ?: "-"}")
+            appendLine("EOL: ${s?.document?.lineEnding?.replace("\n", "LF")?.replace("\r", "CR") ?: "-"}")
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.help_debug_info)
+            .setMessage(info)
+            .setPositiveButton(R.string.help_debug_copy) { _, _ -> copyToClipboard(info) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    // ---- Window menu (#53) ----
+
+    private fun showWindowMenu() {
+        popup {
+            tabs.forEachIndexed { i, s ->
+                val marker = when {
+                    i == active -> "✓ "
+                    s.document.modified -> "● "
+                    else -> "    "
+                }
+                item(marker + s.document.fileName) { activateTab(i) }
+            }
+            menu.add(getString(R.string.window_sort_by)).isEnabled = false
+            item(getString(R.string.sort_name_asc)) { sortTabs(WindowSort.Field.NAME, false) }
+            item(getString(R.string.sort_name_desc)) { sortTabs(WindowSort.Field.NAME, true) }
+            item(getString(R.string.sort_type_asc)) { sortTabs(WindowSort.Field.TYPE, false) }
+            item(getString(R.string.sort_type_desc)) { sortTabs(WindowSort.Field.TYPE, true) }
+            item(getString(R.string.sort_size_asc)) { sortTabs(WindowSort.Field.LENGTH, false) }
+            item(getString(R.string.sort_size_desc)) { sortTabs(WindowSort.Field.LENGTH, true) }
+            item(getString(R.string.sort_modified_asc)) { sortTabs(WindowSort.Field.MODIFIED, false) }
+            item(getString(R.string.sort_modified_desc)) { sortTabs(WindowSort.Field.MODIFIED, true) }
+        }
+    }
+
+    private fun sortTabs(field: WindowSort.Field, descending: Boolean) {
+        if (tabs.size < 2) return
+        val activeDoc = activeSession()
+        val ordered = WindowSort.sorted(tabs, { s ->
+            WindowSort.DocInfo(
+                name = s.document.fileName,
+                typeOrdinal = s.document.language.ordinal,
+                length = s.document.text.length,
+                modifiedAt = s.lastModifiedAt
+            )
+        }, field, descending)
+        tabs.clear()
+        tabs.addAll(ordered)
+        rebuildTabLayout()
+        val newActive = ordered.indexOf(activeDoc).coerceAtLeast(0)
+        activateTab(newActive)
+        refreshTabLabels()
+    }
+
+    /** Rebuilds the TabLayout from the sessions list, preserving per-tab views. */
+    private fun rebuildTabLayout() {
+        val layout = binding.tabLayout
+        for (child in layout.touchables) child.setOnLongClickListener(null)
+        layout.removeAllTabs()
+        tabs.forEach { s ->
+            val tab = layout.newTab()
+            tab.setCustomView(R.layout.tab_item)
+            s.tab = tab
+            val label = tab.customView?.findViewById<android.widget.TextView>(R.id.tab_label)
+            val closeBtn = tab.customView?.findViewById<android.widget.ImageView>(R.id.tab_close)
+            label?.text = s.document.fileName
+            closeBtn?.setOnClickListener {
+                val idx = tabs.indexOfFirst { it.tab === tab }
+                if (idx >= 0) closeTabAt(idx)
+            }
+            layout.addTab(tab)
+        }
+        for (child in layout.touchables) {
+            child.setOnLongClickListener { showTabCloseMenu(); true }
+        }
+    }
+
+    // ---- Macro menu (#45) ----
+
+    private val macroRecorderActions = mutableListOf<MacroRecorder.Action>()
+    private var macroRecording = false
+    private val macroStore by lazy { MacroStore(this) }
+
+    private fun recordAction(a: MacroRecorder.Action) {
+        if (macroRecording) macroRecorderActions.add(a)
+    }
+
+    private fun showMacroMenu() {
+        popup {
+            if (macroRecording) {
+                item(getString(R.string.macro_stop)) { stopMacroRecording(save = false) }
+            } else {
+                item(getString(R.string.macro_start)) {
+                    macroRecorderActions.clear()
+                    macroRecording = true
+                    Toast.makeText(this@MainActivity, R.string.macro_start, Toast.LENGTH_SHORT).show()
+                }
+            }
+            item(getString(R.string.macro_playback)) { playbackMacro(macroRecorderActions.toList()) }
+            item(getString(R.string.macro_run_multiple)) { promptMacroRepeat() }
+            item(getString(R.string.macro_save)) { stopMacroRecording(save = true) }
+            val saved = macroStore.list()
+            if (saved.isNotEmpty()) {
+                menu.add("—").isEnabled = false
+                saved.forEach { m ->
+                    item("▶ ${m.name}") { playbackMacro(m.actions) }
+                }
+                saved.forEach { m ->
+                    item(getString(R.string.macro_delete) + ": ${m.name}") {
+                        macroStore.delete(m.name)
+                        Toast.makeText(this@MainActivity, R.string.macro_delete, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopMacroRecording(save: Boolean) {
+        macroRecording = false
+        if (!save) return
+        if (macroRecorderActions.isEmpty()) {
+            Toast.makeText(this, R.string.macro_none, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val input = EditText(this).apply {
+            hint = getString(R.string.macro_name_hint)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.macro_save)
+            .setView(input)
+            .setPositiveButton(R.string.md_link_ok) { _, _ ->
+                val name = input.text.toString().ifBlank { "macro ${System.currentTimeMillis()}" }
+                macroStore.save(MacroStore.Macro(name, macroRecorderActions.toList()))
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun promptMacroRepeat() {
+        val input = EditText(this).apply {
+            hint = getString(R.string.macro_repeat_hint)
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.macro_run_multiple)
+            .setView(input)
+            .setPositiveButton(R.string.md_link_ok) { _, _ ->
+                val n = input.text.toString().toIntOrNull()
+                if (n == null || n < 1 || n > 1000) {
+                    Toast.makeText(this, R.string.macro_invalid_count, Toast.LENGTH_SHORT).show()
+                } else {
+                    var applied = 0
+                    repeat(n) { applied += playbackMacroInternal(macroRecorderActions.toList()) }
+                    Toast.makeText(this, getString(R.string.macro_playing, applied), Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun playbackMacro(actions: List<MacroRecorder.Action>) {
+        if (actions.isEmpty()) {
+            Toast.makeText(this, R.string.macro_none, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val applied = playbackMacroInternal(actions)
+        Toast.makeText(this, getString(R.string.macro_playing, applied), Toast.LENGTH_SHORT).show()
+    }
+
+    /** Replays against the active tab's buffer as one undoable whole-text change. */
+    private fun playbackMacroInternal(actions: List<MacroRecorder.Action>): Int {
+        val s = activeSession() ?: return 0
+        if (s.readOnly) return 0
+        val buf = MacroRecorder.StringBuffer(s.document.text)
+        val applied = MacroRecorder.replay(buf, actions)
+        if (buf.text != s.document.text) setEditorText(buf.text)
+        return applied
+    }
+
+    // ---- Monitoring (tail -f) (#48) ----
+
+    private val monitorHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var monitorRunnable: Runnable? = null
+
+    private fun toggleMonitoring() {
+        val s = activeSession() ?: return
+        if (s.document.uri == null) {
+            Toast.makeText(this, R.string.need_save_first, Toast.LENGTH_SHORT).show()
+            return
+        }
+        s.monitoring = !s.monitoring
+        if (s.monitoring) {
+            Toast.makeText(this, R.string.monitoring_on, Toast.LENGTH_LONG).show()
+            startMonitoring()
+        } else {
+            stopMonitoring()
+        }
+    }
+
+    private fun startMonitoring() {
+        stopMonitoring()
+        val intervalSec = prefs.getInt("monitoring_interval", 2).coerceIn(1, 60)
+        val runnable = object : Runnable {
+            override fun run() {
+                val s = activeSession()
+                if (s != null && s.monitoring && s.document.uri != null) {
+                    thread(name = "monitor-check") {
+                        val uri = Uri.parse(s.document.uri!!)
+                        val changed = runCatching {
+                            val loaded = files.load(uri)
+                            loaded.text != editor.text?.toString()
+                        }.getOrDefault(false)
+                        runOnUiThread {
+                            val cur = activeSession()
+                            if (changed && cur != null && cur.monitoring && cur === s) {
+                                if (cur.document.modified) {
+                                    Toast.makeText(this@MainActivity, R.string.monitoring_changed, Toast.LENGTH_LONG).show()
+                                } else {
+                                    reloadActive()
+                                    Toast.makeText(this@MainActivity, R.string.monitoring_reloaded, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            monitorRunnable?.let { monitorHandler.postDelayed(it, intervalSec * 1000L) }
+                        }
+                    }
+                } else {
+                    monitorHandler.postDelayed(this, intervalSec * 1000L)
+                }
+            }
+        }
+        monitorRunnable = runnable
+        monitorHandler.postDelayed(runnable, intervalSec * 1000L)
+    }
+
+    private fun stopMonitoring() {
+        monitorRunnable?.let { monitorHandler.removeCallbacks(it) }
+        monitorRunnable = null
+    }
+
+    // ---- Summary (#41) ----
+
+    private fun showSummary() {
+        val s = activeSession() ?: return
+        syncActiveDocument()
+        val text = s.document.text
+        val lines = text.count { it == '\n' } + if (text.isEmpty()) 0 else 1
+        val words = text.split(Regex("\\s+")).count { it.isNotEmpty() }
+        val msg = buildString {
+            appendLine(s.document.fileName)
+            if (s.document.uri != null) appendLine(getString(R.string.summary_path, s.document.uri!!))
+            appendLine(getString(R.string.summary_bytes, text.toByteArray(Charsets.UTF_8).size))
+            appendLine(getString(R.string.summary_chars, text.length))
+            appendLine(getString(R.string.summary_words, words))
+            append(getString(R.string.summary_line, lines))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.summary_title)
+            .setMessage(msg)
+            .setPositiveButton(R.string.hash_copy) { _, _ -> copyToClipboard(msg) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     // ---- Menus ----
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -1304,6 +1612,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
         menu.add(0, 7, 0, R.string.menu_tools)
         menu.add(0, 8, 0, R.string.menu_plugins)
         menu.add(0, 9, 0, R.string.menu_settings)
+        menu.add(0, 10, 0, R.string.menu_macro)
+        menu.add(0, 11, 0, R.string.menu_window)
+        menu.add(0, 12, 0, R.string.menu_help)
         return true
     }
 
@@ -1318,6 +1629,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
             7 -> showToolsMenu()
             8 -> showPluginsMenu()
             9 -> startActivity(Intent(this, SettingsActivity::class.java))
+            10 -> showMacroMenu()
+            11 -> showWindowMenu()
+            12 -> showHelpMenu()
         }
         return true
     }
@@ -1516,6 +1830,74 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.show_line_numbers)) { editor.showLineNumbers = !editor.showLineNumbers }
         item(getString(R.string.action_zoom_in)) { zoom(1.25f) }
         item(getString(R.string.action_zoom_out)) { zoom(0.8f) }
+        item(getString(R.string.action_restore_zoom)) { restoreDefaultZoom() }
+        item(getString(R.string.action_view_external)) { viewCurrentFileExternally() }
+        item(getString(R.string.action_monitoring)) { toggleMonitoring() }
+        item(getString(R.string.action_summary)) { showSummary() }
+    }
+
+    private fun restoreDefaultZoom() {
+        editor.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
+        prefs.edit().putInt("font_size", 14).apply()
+        editor.updateGutterPublic()
+        editor.rehighlight()
+    }
+
+    // ---- External app view + containing folder (#49) ----
+
+    private fun viewCurrentFileExternally() {
+        val s = activeSession()
+        val uriString = s?.document?.uri
+        if (uriString == null) {
+            Toast.makeText(this, R.string.need_save_first, Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uriString)).apply {
+                setDataAndType(Uri.parse(uriString), mimeFor(s.document.fileName))
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(intent)
+        } catch (e: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, R.string.error_no_external_app, Toast.LENGTH_LONG).show()
+        } catch (e: SecurityException) {
+            Toast.makeText(this, getString(R.string.error_load_failed, e.message), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun openContainingFolder(s: TabSession) {
+        val uriString = s.document.uri
+        if (uriString == null) {
+            Toast.makeText(this, R.string.need_save_first, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val docUri = Uri.parse(uriString)
+        val parent = DocumentFile.fromSingleUri(this, docUri)?.parentFile
+        if (parent == null) {
+            // Derive the tree/document parent URI for providers exposing a hierarchy.
+            val treeUri = runCatching {
+                Uri.parse(docUri.toString().substringBeforeLast('/'))
+            }.getOrNull()
+            if (treeUri == null) {
+                Toast.makeText(this, R.string.error_no_folder_view, Toast.LENGTH_LONG).show()
+                return
+            }
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, treeUri).apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                })
+            } catch (e: android.content.ActivityNotFoundException) {
+                Toast.makeText(this, R.string.error_no_folder_view, Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, parent.uri).apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            })
+        } catch (e: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, R.string.error_no_folder_view, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun showThemeMenu() {

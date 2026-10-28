@@ -95,6 +95,15 @@ class ChangeHistoryTest {
     }
 
     @Test
+    fun deletingAllContentDoesNotMarkEmptyBuffer() {
+        val h = ChangeHistory()
+        // deleting the last character: afterText is empty, nothing gets marked
+        h.recordEdit("", 0, 1, 0)
+        assertTrue(h.isEmpty())
+        assertEquals(LineState.NONE, h.stateAt(0))
+    }
+
+    @Test
     fun shrinkRemovesOutOfRangeLines() {
         val h = ChangeHistory()
         h.recordEdit("alpha\nbeta\ngamma", 12, 0, 1) // line 2 exists

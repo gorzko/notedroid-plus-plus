@@ -113,6 +113,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private var newCounter = 1
     private var lastTabClickAt = 0L
     private var lastTabClicked = -1
+    private var dragFromTab = -1
     private var findOptions = FindOptions()
     private var findPanelOpen = false
     private val previewModeMemo = PreviewModeMemo()
@@ -352,8 +353,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
             )
             session.caret = st.caret
             session.bookmarks = st.bookmarks.toSet()
+            session.pinned = st.pinned
         }
         sessionStore.clear()
+        reorderPinnedToFront()
+        rebuildTabLayout()
         activateTab(0)
         refreshTabLabels()
     }
@@ -386,7 +390,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 s.document.lineEnding,
                 s.document.modified,
                 s.caret,
-                s.bookmarks.toList()
+                s.bookmarks.toList(),
+                s.pinned
             )
         })
     }
@@ -401,7 +406,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         super.onSaveInstanceState(outState)
         syncActiveDocument()
         activeSession()?.let { it.caret = editor.selectionStart }
-        val states = tabs.map { arrayOf(it.document.uri, it.document.fileName, it.document.text, it.document.language.name, it.document.encoding, it.document.lineEnding, it.document.modified, it.caret, it.readOnly, ArrayList(it.bookmarks), it.textDirectionRtl) }
+        val states = tabs.map { arrayOf(it.document.uri, it.document.fileName, it.document.text, it.document.language.name, it.document.encoding, it.document.lineEnding, it.document.modified, it.caret, it.readOnly, ArrayList(it.bookmarks), it.textDirectionRtl, it.pinned) }
         outState.putSerializable(KEY_TABS, ArrayList(states))
         outState.putInt(KEY_ACTIVE, active)
     }
@@ -425,7 +430,10 @@ class MainActivity : AppCompatActivity(), PluginHost {
             session.readOnly = arr[8] as? Boolean ?: false
             session.bookmarks = (arr[9] as? ArrayList<Int>)?.toSet() ?: emptySet()
             session.textDirectionRtl = arr[10] as? Boolean ?: false
+            session.pinned = arr[11] as? Boolean ?: false
         }
+        reorderPinnedToFront()
+        rebuildTabLayout()
         if (tabs.isEmpty()) {
             addTab(null, null)
             return
@@ -817,31 +825,36 @@ class MainActivity : AppCompatActivity(), PluginHost {
      */
     private fun attachTabDragReorder() {
         val strip = binding.tabLayout.getChildAt(0) as? android.view.ViewGroup ?: return
-        var dragFrom = -1
         binding.tabLayout.setOnDragListener { _, event ->
             when (event.action) {
                 android.view.DragEvent.ACTION_DRAG_STARTED -> true
                 android.view.DragEvent.ACTION_DRAG_LOCATION -> true
                 android.view.DragEvent.ACTION_DROP -> {
                     val to = tabPositionAt(strip, event.x)
-                    if (dragFrom >= 0 && to >= 0) reorderTabSessions(dragFrom, to)
-                    dragFrom = -1
+                    if (dragFromTab >= 0 && to >= 0) reorderTabSessions(dragFromTab, to)
+                    dragFromTab = -1
                     true
                 }
                 else -> false
             }
         }
+        attachTabStripChildListeners()
+    }
+
+    /** Per-child long-press + drag-start listeners; call after every tab view (re)creation. */
+    private fun attachTabStripChildListeners() {
+        val strip = binding.tabLayout.getChildAt(0) as? android.view.ViewGroup ?: return
         for (child in binding.tabLayout.touchables) {
             child.setOnLongClickListener { showTabCloseMenu(); true }
             child.setOnTouchListener { v, e ->
                 if (prefs.getBoolean("tab_bar_locked", false)) return@setOnTouchListener false
                 if (e.action == android.view.MotionEvent.ACTION_DOWN) {
-                    dragFrom = tabPositionAt(strip, e.rawX - strip.x)
+                    dragFromTab = tabPositionAt(strip, e.rawX - strip.x)
                 }
-                if (e.action == android.view.MotionEvent.ACTION_MOVE && dragFrom in 0 until tabs.size) {
-                    val dragData = android.content.ClipData.newPlainText("tab", dragFrom.toString())
+                if (e.action == android.view.MotionEvent.ACTION_MOVE && dragFromTab in 0 until tabs.size) {
+                    val dragData = android.content.ClipData.newPlainText("tab", dragFromTab.toString())
                     v.startDragAndDrop(dragData, android.view.View.DragShadowBuilder(v), null, 0)
-                    dragFrom = -1
+                    dragFromTab = -1
                 }
                 false
             }
@@ -1057,11 +1070,13 @@ class MainActivity : AppCompatActivity(), PluginHost {
             item(getString(R.string.action_close_right)) { closeRange(TabBar.closeAllToRight(tabs.size, anchor)) }
             item(getString(R.string.action_close_others)) {
                 val keep = active
+                val keepSession = activeSession()
                 val dirty = tabs.count { it.document.modified && tabs.indexOf(it) != keep }
                 TabBar.closeAllButThis(tabs.size, keep).forEach { idx ->
                     if (!tabs[idx].document.modified && !tabs[idx].pinned) removeTab(idx)
                 }
-                activateTab(0.coerceAtMost(tabs.size - 1))
+                val target = keepSession?.let { tabs.indexOf(it) }?.coerceAtLeast(0) ?: 0
+                activateTab(target.coerceAtMost(tabs.size - 1))
                 if (dirty > 0) Toast.makeText(this@MainActivity, getString(R.string.tabs_kept_dirty, dirty), Toast.LENGTH_SHORT).show()
             }
             item(getString(R.string.action_close_all)) {
@@ -1109,11 +1124,14 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun closeAllButThis(anchor: Int) {
+        val anchorSession = tabs.getOrNull(anchor)
         val dirty = tabs.count { it.document.modified && tabs.indexOf(it) != anchor }
         TabBar.closeAllButThis(tabs.size, anchor).forEach { idx ->
             if (!tabs[idx].document.modified && !tabs[idx].pinned) removeTab(idx)
         }
-        activateTab((tabs.size - 1).coerceAtLeast(0))
+        // Notepad++ keeps the current tab active after Close All BUT This
+        val target = anchorSession?.let { tabs.indexOf(it) }?.coerceAtLeast(0) ?: 0
+        activateTab(target.coerceAtMost(tabs.size - 1))
         if (dirty > 0) Toast.makeText(this, getString(R.string.tabs_kept_dirty, dirty), Toast.LENGTH_SHORT).show()
     }
 
@@ -1823,9 +1841,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             }
             layout.addTab(tab)
         }
-        for (child in layout.touchables) {
-            child.setOnLongClickListener { showTabCloseMenu(); true }
-        }
+        attachTabStripChildListeners()
     }
 
     // ---- Macro menu (#45) ----
@@ -2719,6 +2735,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun showEncodingMenu() = popup {
+        menu.add(getString(R.string.encoding_set_title)).isEnabled = false
         TextUtils.names().forEach { name -> item(name) { setEncoding(name) } }
         item(getString(R.string.convert_to_title)) { showConvertToMenu() }
         item(getString(R.string.charsets_title)) { showCharsetsMenu() }
@@ -2734,21 +2751,14 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun showCharsetsMenu() {
         popup {
-            TextUtils.CHARSET_FAMILIES.forEach { (family, _) ->
-                item(family) { showCharsetFamilyMenu(family) }
+            TextUtils.CHARSET_FAMILIES.forEach { (family, names) ->
+                val available = names.filter { TextUtils.isCharsetAvailable(it) }
+                if (available.isEmpty()) return@forEach
+                val sub = menu.addSubMenu(family)
+                available.forEach { name ->
+                    sub.add(name).setOnMenuItemClickListener { setEncoding(name); true }
+                }
             }
-        }
-    }
-
-    private fun showCharsetFamilyMenu(family: String) {
-        val names = TextUtils.CHARSET_FAMILIES.firstOrNull { it.first == family }?.second ?: return
-        val available = names.filter { TextUtils.isCharsetAvailable(it) }
-        if (available.isEmpty()) {
-            Toast.makeText(this, getString(R.string.charsets_unavailable), Toast.LENGTH_SHORT).show()
-            return
-        }
-        popup {
-            available.forEach { name -> item(name) { setEncoding(name) } }
         }
     }
 

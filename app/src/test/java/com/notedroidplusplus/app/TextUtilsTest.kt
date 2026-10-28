@@ -230,8 +230,8 @@ class TextUtilsTest {
             val xml = "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><root/>"
             assertEquals(Charset.forName("ISO-8859-1"), TextUtils.detectFromProlog(xml))
             val xmlSingle = "<?xml version='1.0' encoding='Shift_JIS'?><a/>"
-            // single quotes: charset= fallback covers the meta form; xml decl with quotes is primary
-            assertNull(TextUtils.detectFromProlog(xmlSingle))
+            // single-quoted XML declarations are detected too (XML spec allows both styles)
+            assertEquals(Charset.forName("Shift_JIS"), TextUtils.detectFromProlog(xmlSingle))
             val html = "<html><head><meta charset=\"windows-1252\"></head><body>x</body></html>"
             assertEquals(Charset.forName("windows-1252"), TextUtils.detectFromProlog(html))
             assertNull(TextUtils.detectFromProlog("plain text with no prolog at all"))

@@ -77,7 +77,7 @@ object TextUtils {
     fun detectFromProlog(text: String): Charset? {
         val head = text.take(4096)
         val trimmed = head.trimStart()
-        val declRe = "encoding=\"([A-Za-z0-9._:-]+)\"".toRegex()
+        val declRe = "encoding=[\"']([A-Za-z0-9._:-]+)[\"']".toRegex()
         val charsetRe = "charset=[\"']?([A-Za-z0-9._:-]+)".toRegex(RegexOption.IGNORE_CASE)
         val name = when {
             trimmed.startsWith("<?xml") -> declRe.find(head)?.groupValues?.get(1)

@@ -26,7 +26,8 @@ class SessionStore(private val context: Context) {
                     "lineEnding" to Json.Value.Str(tab.lineEnding),
                     "modified" to Json.Value.Bool(tab.modified),
                     "caret" to Json.Value.Num(tab.caret.toString()),
-                    "bookmarks" to Json.Value.Arr(tab.bookmarks.map { Json.Value.Num(it.toString()) })
+                    "bookmarks" to Json.Value.Arr(tab.bookmarks.map { Json.Value.Num(it.toString()) }),
+                    "pinned" to Json.Value.Bool(tab.pinned)
                 )
             )
         })
@@ -52,7 +53,8 @@ class SessionStore(private val context: Context) {
                     lineEnding = str("lineEnding").ifBlank { "\n" },
                     modified = bool("modified"),
                     caret = num("caret"),
-                    bookmarks = (obj.entries.firstOrNull { it.first == "bookmarks" }?.second as? Json.Value.Arr)?.items?.mapNotNull { (it as? Json.Value.Num)?.raw?.toIntOrNull() } ?: emptyList()
+                    bookmarks = (obj.entries.firstOrNull { it.first == "bookmarks" }?.second as? Json.Value.Arr)?.items?.mapNotNull { (it as? Json.Value.Num)?.raw?.toIntOrNull() } ?: emptyList(),
+                    pinned = bool("pinned")
                 )
             }
         }.getOrNull()
@@ -71,6 +73,7 @@ class SessionStore(private val context: Context) {
         val lineEnding: String,
         val modified: Boolean,
         val caret: Int,
-        val bookmarks: List<Int> = emptyList()
+        val bookmarks: List<Int> = emptyList(),
+        val pinned: Boolean = false
     )
 }

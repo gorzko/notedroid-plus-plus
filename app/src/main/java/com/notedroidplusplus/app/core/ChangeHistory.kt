@@ -64,13 +64,14 @@ class ChangeHistory {
      * touches (in the new coordinates) become MODIFIED_UNSAVED.
      */
     fun recordEdit(afterText: String, start: Int, deletedLen: Int, insertedLen: Int) {
+        if (afterText.isEmpty() && insertedLen == 0) return
         val s = start.coerceIn(0, afterText.length)
         val first = lineOfOffset(afterText, s)
         // a zero-length insert still touches the line at the caret; an insert
         // spanning newlines marks through its last line, but an offset sitting
         // exactly on a newline belongs to the line it ends, not the next one
         val endOffset = if (insertedLen == 0) s else (s + insertedLen - 1)
-        val last = lineOfOffset(afterText, endOffset.coerceIn(0, afterText.length - 1))
+        val last = lineOfOffset(afterText, endOffset.coerceIn(0, maxOf(0, afterText.length - 1)))
         val spanEnd = maxOf(first, last)
         for (line in first..spanEnd) states[line] = LineState.MODIFIED_UNSAVED
     }

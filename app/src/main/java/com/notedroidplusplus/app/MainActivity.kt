@@ -47,6 +47,7 @@ import com.notedroidplusplus.app.plugins.PluginImportActivity
 import com.notedroidplusplus.app.plugins.PluginRegistry
 import com.notedroidplusplus.app.search.SearchHit
 import com.notedroidplusplus.app.search.findAll
+import com.notedroidplusplus.app.preview.PreviewModeMemo
 import com.notedroidplusplus.app.preview.PreviewView
 import com.notedroidplusplus.app.search.FindOptions
 import com.notedroidplusplus.app.search.findNext
@@ -72,7 +73,6 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private lateinit var pluginRegistry: PluginRegistry
     private lateinit var recentFiles: RecentFiles
     private lateinit var sessionStore: SessionStore
-    private var pendingSaveEncoding: String? = null
     private var scaleDetector: ScaleGestureDetector? = null
 
     data class TabSession(
@@ -88,9 +88,27 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private var newCounter = 1
     private var findOptions = FindOptions()
     private var findPanelOpen = false
-    private var pendingCloseIndex = -1
     private val saveAsQueue = mutableListOf<TabSession>()
-    private var pendingSaveAsSession: TabSession? = null
+    private val previewModeMemo = PreviewModeMemo()
+
+    /** Per-flow Save As state: one entry per in-flight flow, never shared between flows. */
+    private data class SaveAsFlow(
+        val session: TabSession?,
+        val encoding: String?,
+        val closeIndex: Int = -1
+    )
+
+    private val saveAsFlows = mutableListOf<SaveAsFlow>()
+    private var activeSaveAsFlow: SaveAsFlow? = null
+
+    private fun beginSaveAsFlow(flow: SaveAsFlow) {
+        activeSaveAsFlow?.let { saveAsFlows.add(it) }
+        activeSaveAsFlow = flow
+    }
+
+    private fun endActiveSaveAsFlow() {
+        activeSaveAsFlow = null
+    }
 
     private val openLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -110,18 +128,20 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 if (resultCode == RESULT_OK) intent?.data else null
         }) { uri ->
             val savedUri = uri
-            val encodingTarget = pendingSaveAsSession
+            val flow = activeSaveAsFlow
+            val encodingTarget = flow?.session
             if (savedUri != null && encodingTarget != null) {
-                pendingSaveEncoding?.let { enc -> encodingTarget.document = encodingTarget.document.copy(encoding = enc) }
+                flow.encoding?.let { enc -> encodingTarget.document = encodingTarget.document.copy(encoding = enc) }
             }
             if (savedUri == null) {
-                if (pendingCloseIndex >= 0) pendingCloseIndex = -1
-                pendingSaveEncoding = null
-                pendingSaveAsSession = null
+                if (flow != null && flow.closeIndex >= 0) {
+                    // pending close dropped: the tab stays open
+                }
+                endActiveSaveAsFlow()
                 saveAsQueue.clear()
                 return@registerForActivityResult
             }
-            val index = pendingCloseIndex
+            val index = flow?.closeIndex ?: -1
             val session = when {
                 index >= 0 -> tabs.getOrNull(index)
                 encodingTarget != null && tabs.contains(encodingTarget) -> encodingTarget
@@ -130,12 +150,10 @@ class MainActivity : AppCompatActivity(), PluginHost {
             if (session != null) {
                 val saved = saveSessionTo(session, savedUri)
                 if (index >= 0) {
-                    if (saved) removeTab(index) else pendingCloseIndex = -1
+                    if (saved) removeTab(index)
                 }
             }
-            pendingCloseIndex = -1
-            pendingSaveEncoding = null
-            pendingSaveAsSession = null
+            endActiveSaveAsFlow()
             launchNextQueuedSaveAs()
         }
 
@@ -639,7 +657,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             else -> "Unix (LF)"
         }
         binding.statusLanguage.text = s?.document?.language?.displayName ?: ""
-        val md = s != null && previewMode == null && PreviewView.modeFor(
+        val md = s != null && previewMode == null && previewModeMemo.modeFor(
             text,
             s.document.language == LanguageMode.MARKDOWN,
             s.document.language == LanguageMode.HTML
@@ -675,20 +693,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
         AlertDialog.Builder(this)
             .setTitle(R.string.encoding_title)
             .setItems(encodings.toTypedArray()) { _, which ->
-                pendingSaveEncoding = encodings[which]
-                pendingCloseIndex = -1
-                pendingSaveAsSession = s
+                beginSaveAsFlow(SaveAsFlow(session = s, encoding = encodings[which]))
                 saveAsLauncher.launch(mimeFor(s.document.fileName) to s.document.fileName)
             }
             .setNegativeButton(R.string.cancel) { _, _ ->
-                pendingSaveEncoding = null
-                pendingSaveAsSession = null
+                endActiveSaveAsFlow()
                 saveAsQueue.clear()
                 launchNextQueuedSaveAs()
             }
             .setOnCancelListener {
-                pendingSaveEncoding = null
-                pendingSaveAsSession = null
+                endActiveSaveAsFlow()
                 saveAsQueue.clear()
             }
             .show()
@@ -730,7 +744,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 if (s.document.uri != null) {
                     if (saveSessionTo(s, Uri.parse(s.document.uri))) removeTab(index)
                 } else {
-                    pendingCloseIndex = index
+                    beginSaveAsFlow(SaveAsFlow(session = s, encoding = null, closeIndex = index))
                     saveAsLauncher.launch(mimeFor(s.document.fileName) to s.document.fileName)
                 }
             }
@@ -771,9 +785,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 .setPositiveButton(R.string.yes) { _, _ ->
                     val uri = s.document.uri
                     if (uri != null) {
-                        if (saveSessionTo(s, Uri.parse(uri))) removeTab(active) else pendingCloseIndex = -1
+                        if (saveSessionTo(s, Uri.parse(uri))) removeTab(active)
                     } else {
-                        pendingCloseIndex = active
+                        beginSaveAsFlow(SaveAsFlow(session = s, encoding = null, closeIndex = active))
                         saveAsLauncher.launch(mimeFor(s.document.fileName) to s.document.fileName)
                     }
                 }
@@ -1109,7 +1123,6 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun launchNextQueuedSaveAs() {
         val next = saveAsQueue.removeFirstOrNull() ?: return
         if (!tabs.contains(next) || !next.document.modified) return launchNextQueuedSaveAs()
-        pendingSaveAsSession = next
         saveAsWithEncoding(next)
     }
 
@@ -1221,15 +1234,20 @@ class MainActivity : AppCompatActivity(), PluginHost {
                     val doc = PdfDocument()
                     try {
                         for (pageNo in 1..pageCount) {
+                            val firstLine = (pageNo - 1) * linesPerPage
+                            val lastLine = (firstLine + linesPerPage).coerceAtMost(layout.lineCount) - 1
+                            val start = layout.getLineStart(firstLine)
+                            val end = layout.getLineEnd(lastLine)
+                            val pageLayout = StaticLayout.Builder.obtain(text, start, end, paint, w)
+                                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                                .setLineSpacing(2f, 1.1f)
+                                .build()
                             val info = PdfDocument.PageInfo.Builder(printWidth, printHeight, pageNo).create()
                             val page = doc.startPage(info)
-                            val canvas = page.canvas
-                            canvas.save()
-                            canvas.translate(marginH, marginV - (pageNo - 1) * linesPerPage * lineHeight)
-                            canvas.clipRect(0, (pageNo - 1) * linesPerPage * lineHeight,
-                                w, pageNo * linesPerPage * lineHeight)
-                            layout.draw(canvas)
-                            canvas.restore()
+                            page.canvas.save()
+                            page.canvas.translate(marginH, marginV)
+                            pageLayout.draw(page.canvas)
+                            page.canvas.restore()
                             doc.finishPage(page)
                         }
                         java.io.FileOutputStream(destination.fileDescriptor).use { out ->

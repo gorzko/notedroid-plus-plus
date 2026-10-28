@@ -1280,7 +1280,13 @@ class MainActivity : AppCompatActivity(), PluginHost {
         if (active == index) tabs[index].caret = editor.selectionStart
         tabs[index].tab?.let { binding.tabLayout.removeTab(it) }
         tabs.removeAt(index)
-        if (tabs.isEmpty()) { addTab(null, null); return }
+        if (tabs.isEmpty()) {
+            // The closed session is discarded; a fresh scratch tab must not
+            // inherit its editor content via the outgoing sync (#79).
+            active = -1
+            addTab(null, null)
+            return
+        }
         val next = (index).coerceAtMost(tabs.size - 1)
         active = next
         // The removed session owned the editor content; its document is already

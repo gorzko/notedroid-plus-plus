@@ -1456,9 +1456,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.action_goto)) { gotoLine() }
         item(getString(R.string.action_find_in_files)) {
             refreshFindOptions()
+            syncActiveDocument()
+            val buffers = arrayListOf<String>()
+            tabs.filter { it.document.uri != null }.forEach {
+                buffers.add(it.document.uri!!)
+                buffers.add(it.document.text)
+            }
             fifLauncher.launch(
                 Intent(this@MainActivity, FindInFilesActivity::class.java)
                     .putExtra(FindInFilesActivity.EXTRA_QUERY, binding.findInput.text.toString())
+                    .putStringArrayListExtra(FindInFilesActivity.EXTRA_OPEN_BUFFERS, buffers)
             )
         }
     }

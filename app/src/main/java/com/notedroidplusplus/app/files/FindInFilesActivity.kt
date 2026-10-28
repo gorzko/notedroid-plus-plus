@@ -15,10 +15,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
 import com.notedroidplusplus.app.R
+import com.notedroidplusplus.app.search.FindFilters
 import com.notedroidplusplus.app.search.FindOptions
 import com.notedroidplusplus.app.search.SearchHit
 import com.notedroidplusplus.app.search.findAll
-import java.nio.charset.StandardCharsets
 import kotlin.concurrent.thread
 
 /** Notepad++-style Find in Files: searches a SAF folder tree and lists per-file/line hits. */
@@ -28,11 +28,16 @@ class FindInFilesActivity : AppCompatActivity() {
     private lateinit var matchCase: CheckBox
     private lateinit var wholeWord: CheckBox
     private lateinit var regex: CheckBox
+    private lateinit var filtersInput: EditText
+    private lateinit var allSubfolders: CheckBox
     private lateinit var resultsList: ListView
     private lateinit var progress: android.widget.ProgressBar
     private var results: List<SearchHit> = emptyList()
     @Volatile private var searchCancelled = false
     private var searchThread: Thread? = null
+
+    /** Buffer text of documents open in the editor, keyed by file URI (buffer priority). */
+    private var openBuffers: Map<String, String> = emptyMap()
 
     private val treeLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -47,6 +52,8 @@ class FindInFilesActivity : AppCompatActivity() {
         matchCase = findViewById(R.id.fif_match_case)
         wholeWord = findViewById(R.id.fif_whole_word)
         regex = findViewById(R.id.fif_regex)
+        filtersInput = findViewById(R.id.fif_filters)
+        allSubfolders = findViewById(R.id.fif_all_subfolders)
         resultsList = findViewById(R.id.fif_results)
         progress = findViewById(android.R.id.progress)
 
@@ -60,6 +67,8 @@ class FindInFilesActivity : AppCompatActivity() {
             if (queryInput.text.isNullOrBlank()) {
                 Toast.makeText(this, R.string.find_what, Toast.LENGTH_SHORT).show()
             } else {
+                openBuffers = intent.getStringArrayListExtra(EXTRA_OPEN_BUFFERS)
+                    ?.zipWithNext()?.toMap() ?: emptyMap()
                 treeLauncher.launch(null)
             }
         }
@@ -84,6 +93,9 @@ class FindInFilesActivity : AppCompatActivity() {
             wholeWord = wholeWord.isChecked,
             regex = regex.isChecked
         )
+        val filters = FindFilters.parse(filtersInput.text.toString())
+        val includeSubfolders = allSubfolders.isChecked
+        val buffers = openBuffers
         progress.visibility = View.VISIBLE
         searchCancelled = false
         findViewById<Button>(R.id.fif_search).isEnabled = false
@@ -94,7 +106,7 @@ class FindInFilesActivity : AppCompatActivity() {
             val resolver = contentResolver
             val root = DocumentFile.fromTreeUri(this, treeUri)
             if (root != null) {
-                walk(root, opts, resolver,
+                walk(root, opts, filters, buffers, includeSubfolders, depth = 0, resolver,
                     onFile = { fileHits -> hits.addAll(fileHits) },
                     onScanned = { },
                     isCancelled = { searchCancelled })
@@ -106,14 +118,6 @@ class FindInFilesActivity : AppCompatActivity() {
                 results = hits
                 if (hits.isEmpty()) {
                     Toast.makeText(this, R.string.toast_no_match, Toast.LENGTH_SHORT).show()
-                }
-                resultsList.adapter = ArrayAdapter(
-                    this,
-                    android.R.layout.simple_list_item_2,
-                    android.R.id.text1,
-                    hits.map { "${it.file}:${it.line}:${it.column}" }
-                ).also { adapter ->
-                    // two-line rows via override is skipped for simplicity: use custom bind
                 }
                 bindResults(hits)
             }
@@ -138,6 +142,10 @@ class FindInFilesActivity : AppCompatActivity() {
     private fun walk(
         dir: DocumentFile,
         opts: FindOptions,
+        filters: FindFilters.Parsed,
+        buffers: Map<String, String>,
+        includeSubfolders: Boolean,
+        depth: Int,
         resolver: android.content.ContentResolver,
         onFile: (List<SearchHit>) -> Unit,
         onScanned: () -> Unit,
@@ -146,16 +154,29 @@ class FindInFilesActivity : AppCompatActivity() {
         dir.listFiles().forEach { doc ->
             if (isCancelled()) return
             if (doc.isDirectory) {
-                walk(doc, opts, resolver, onFile, onScanned, isCancelled)
+                if (includeSubfolders && FindFilters.acceptsDirectory(filters, doc.name ?: "", depth)) {
+                    walk(doc, opts, filters, buffers, includeSubfolders, depth + 1, resolver, onFile, onScanned, isCancelled)
+                }
             } else if (doc.isFile) {
-                val hits = searchFile(doc, opts, resolver)
+                if (!FindFilters.acceptsFile(filters, doc.name ?: "")) return@forEach
+                val hits = searchFile(doc, opts, buffers, resolver)
                 onScanned()
                 if (hits.isNotEmpty()) onFile(hits)
             }
         }
     }
 
-    private fun searchFile(doc: DocumentFile, opts: FindOptions, resolver: android.content.ContentResolver): List<SearchHit> {
+    private fun searchFile(
+        doc: DocumentFile,
+        opts: FindOptions,
+        buffers: Map<String, String>,
+        resolver: android.content.ContentResolver
+    ): List<SearchHit> {
+        val displayName = doc.name ?: doc.uri.lastPathSegment ?: "?"
+        // Buffer priority: an open editor buffer wins over disk content.
+        buffers[doc.uri.toString()]?.let { text ->
+            return findAll(text, opts, displayName, doc.uri.toString())
+        }
         val size = doc.length()
         // skip huge binary-looking files: cap at 5 MB
         if (size <= 0 || size > 5 * 1024 * 1024) return emptyList()
@@ -165,12 +186,13 @@ class FindInFilesActivity : AppCompatActivity() {
             val probe = bytes.copyOf(minOf(bytes.size, 1024))
             if (probe.count { it == 0.toByte() } > probe.size / 8) return emptyList()
             val text = String(bytes, Charsets.UTF_8)
-            findAll(text, opts, doc.name ?: doc.uri.lastPathSegment ?: "?", doc.uri.toString())
+            findAll(text, opts, displayName, doc.uri.toString())
         }.getOrDefault(emptyList())
     }
 
     companion object {
         const val EXTRA_QUERY = "query"
+        const val EXTRA_OPEN_BUFFERS = "open_buffers"
         const val EXTRA_OPEN_URI = "open_uri"
         const val EXTRA_OPEN_LINE = "open_line"
         fun start(context: Context, query: String) {

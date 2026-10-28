@@ -28,7 +28,7 @@ data class EditorTheme(
 
 object ThemeRegistry {
 
-    private fun rgb(hex: Long): Int = hex.toInt()
+    private fun rgb(hex: Long): Int = hex.toInt() or 0xFF000000.toInt()
 
     private fun syntax(vararg pairs: Pair<com.notedroidplusplus.app.TokenKind, Long>) =
         pairs.associate { it.first to rgb(it.second) }

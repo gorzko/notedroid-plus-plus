@@ -42,6 +42,8 @@ import com.notedroidplusplus.app.core.MacroStore
 import com.notedroidplusplus.app.core.SaveAsCoordinator
 import com.notedroidplusplus.app.core.WindowSort
 import com.notedroidplusplus.app.core.SessionStore
+import com.notedroidplusplus.app.core.ChangeHistory
+import com.notedroidplusplus.app.core.TabBar
 import com.notedroidplusplus.app.core.TextUtils
 import com.notedroidplusplus.app.databinding.ActivityMainBinding
 import com.notedroidplusplus.app.editing.CodeEditText
@@ -100,12 +102,18 @@ class MainActivity : AppCompatActivity(), PluginHost {
         var lastModifiedAt: Long = 0L,
         var monitoring: Boolean = false,
         var bookmarks: Set<Int> = emptySet(),
-        var textDirectionRtl: Boolean = false
+        var textDirectionRtl: Boolean = false,
+        val changeHistory: ChangeHistory = ChangeHistory(),
+        var baselineText: String = "",
+        var pinned: Boolean = false
     )
 
     private val tabs = mutableListOf<TabSession>()
     private var active = -1
     private var newCounter = 1
+    private var lastTabClickAt = 0L
+    private var lastTabClicked = -1
+    private var dragFromTab = -1
     private var findOptions = FindOptions()
     private var findPanelOpen = false
     private val previewModeMemo = PreviewModeMemo()
@@ -236,6 +244,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         for (child in binding.tabLayout.touchables) {
             child.setOnLongClickListener { showTabCloseMenu(); true }
         }
+        attachTabDragReorder()
 
         binding.btnNew.setOnClickListener { addTab(null, null) }
         binding.btnOpen.setOnClickListener { openLauncher.launch(arrayOf("text/*", "application/json", "application/xml")) }
@@ -344,8 +353,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
             )
             session.caret = st.caret
             session.bookmarks = st.bookmarks.toSet()
+            session.pinned = st.pinned
         }
         sessionStore.clear()
+        reorderPinnedToFront()
+        rebuildTabLayout()
         activateTab(0)
         refreshTabLabels()
     }
@@ -378,7 +390,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 s.document.lineEnding,
                 s.document.modified,
                 s.caret,
-                s.bookmarks.toList()
+                s.bookmarks.toList(),
+                s.pinned
             )
         })
     }
@@ -393,7 +406,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         super.onSaveInstanceState(outState)
         syncActiveDocument()
         activeSession()?.let { it.caret = editor.selectionStart }
-        val states = tabs.map { arrayOf(it.document.uri, it.document.fileName, it.document.text, it.document.language.name, it.document.encoding, it.document.lineEnding, it.document.modified, it.caret, it.readOnly, ArrayList(it.bookmarks), it.textDirectionRtl) }
+        val states = tabs.map { arrayOf(it.document.uri, it.document.fileName, it.document.text, it.document.language.name, it.document.encoding, it.document.lineEnding, it.document.modified, it.caret, it.readOnly, ArrayList(it.bookmarks), it.textDirectionRtl, it.pinned) }
         outState.putSerializable(KEY_TABS, ArrayList(states))
         outState.putInt(KEY_ACTIVE, active)
     }
@@ -417,7 +430,10 @@ class MainActivity : AppCompatActivity(), PluginHost {
             session.readOnly = arr[8] as? Boolean ?: false
             session.bookmarks = (arr[9] as? ArrayList<Int>)?.toSet() ?: emptySet()
             session.textDirectionRtl = arr[10] as? Boolean ?: false
+            session.pinned = arr[11] as? Boolean ?: false
         }
+        reorderPinnedToFront()
+        rebuildTabLayout()
         if (tabs.isEmpty()) {
             addTab(null, null)
             return
@@ -499,6 +515,12 @@ class MainActivity : AppCompatActivity(), PluginHost {
         startPeriodicBackup()
         editor.edgeBackgroundMode = prefs.getBoolean("edge_background_mode", false)
         editor.edgeColumns = EdgeColumns.parse(prefs.getString("edge_columns", null))
+        editor.showChangeHistoryMargin = prefs.getBoolean("change_history_margin", true)
+        editor.showChangeHistoryInText = prefs.getBoolean("change_history_in_text", false)
+        binding.tabLayout.tabMode = if (prefs.getBoolean("tab_multi_line", false))
+            com.google.android.material.tabs.TabLayout.MODE_FIXED
+        else
+            com.google.android.material.tabs.TabLayout.MODE_SCROLLABLE
     }
 
     override fun onResume() {
@@ -535,10 +557,12 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.addTextChangedListener(tw)
         if (before != text) {
             pushWholeTextChange(s, before, text)
+            s.changeHistory.reconcile(text, s.baselineText.ifEmpty { text })
             s.document = s.document.copy(text = text, modified = true)
         } else {
             s.document = s.document.copy(text = text)
         }
+        editor.changeHistory = s.changeHistory.markedLines()
         refreshTabLabels()
         updateStatus()
     }
@@ -579,6 +603,10 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
         override fun onTextChanged(s: CharSequence?, start: Int, beforeCount: Int, count: Int) {
             val sess = activeSession() ?: return
+            val afterText = s?.toString() ?: ""
+            if (afterText != sess.document.text) {
+                sess.changeHistory.recordEdit(afterText, start, beforeCount, count)
+            }
             val removed = if (beforeCount > 0) pendingRemoved.takeIf { it != null } ?: "" else ""
             val inserted = if (count > 0) s?.subSequence(start, start + count)?.toString() ?: "" else ""
             when {
@@ -641,12 +669,29 @@ class MainActivity : AppCompatActivity(), PluginHost {
         val label = tab.customView?.findViewById<android.widget.TextView>(R.id.tab_label)
         val closeBtn = tab.customView?.findViewById<android.widget.ImageView>(R.id.tab_close)
         label?.text = doc.fileName
+        closeBtn?.visibility = if (prefs.getBoolean("tab_show_close", true))
+            android.view.View.VISIBLE else android.view.View.INVISIBLE
         closeBtn?.setOnClickListener {
             val idx = tabs.indexOfFirst { it.tab === tab }
             if (idx >= 0) closeTabAt(idx)
         }
+        label?.setOnClickListener {
+            // Notepad++ double-click on a tab closes it (settings-gated)
+            val now = System.currentTimeMillis()
+            val idx = tabs.indexOfFirst { it.tab === tab }
+            @Suppress("ClickableViewAccessibility")
+            if (tabDoubleClickClose && now - lastTabClickAt < 400 && idx >= 0 && lastTabClicked == idx) {
+                closeTabAt(idx)
+                lastTabClickAt = 0L
+                lastTabClicked = -1
+            } else {
+                lastTabClickAt = now
+                lastTabClicked = idx
+            }
+        }
         binding.tabLayout.addTab(tab)
         val session = TabSession(doc, tab)
+        session.baselineText = doc.text
         tabs.add(session)
         activateTab(tabs.size - 1)
         return session
@@ -696,6 +741,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 modified = false
             )
             current.readOnly = false
+            current.changeHistory.reset()
+            current.baselineText = loaded.text
+            editor.changeHistory = emptyMap()
             editor.filters = emptyArray()
             editor.removeTextChangedListener(tw)
             editor.setText(loaded.text)
@@ -730,6 +778,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.setSelection(s.caret.coerceIn(0, s.document.text.length))
         editor.addTextChangedListener(tw)
         editor.bookmarks = s.bookmarks
+        editor.changeHistory = s.changeHistory.markedLines()
         editor.textDirection = if (s.textDirectionRtl) android.view.View.TEXT_DIRECTION_ANY_RTL
         else android.view.View.TEXT_DIRECTION_LTR
         editor.layoutDirection = if (s.textDirectionRtl) android.view.View.LAYOUT_DIRECTION_RTL else android.view.View.LAYOUT_DIRECTION_LTR
@@ -764,14 +813,90 @@ class MainActivity : AppCompatActivity(), PluginHost {
             s.document = s.document.copy(text = text, modified = modified)
             s.lastModifiedAt = System.currentTimeMillis()
         }
+        editor.changeHistory = s.changeHistory.markedLines()
         refreshTabLabels()
         updateStatus()
     }
 
+    /**
+     * Drag-to-reorder on the tab strip (Notepad++ drag tab), disabled when the
+     * tab bar is locked. Pinned tabs stay in the leading group: a pinned tab
+     * can only swap within the pinned group, an unpinned one within the rest.
+     */
+    private fun attachTabDragReorder() {
+        val strip = binding.tabLayout.getChildAt(0) as? android.view.ViewGroup ?: return
+        binding.tabLayout.setOnDragListener { _, event ->
+            when (event.action) {
+                android.view.DragEvent.ACTION_DRAG_STARTED -> true
+                android.view.DragEvent.ACTION_DRAG_LOCATION -> true
+                android.view.DragEvent.ACTION_DROP -> {
+                    val to = tabPositionAt(strip, event.x)
+                    if (dragFromTab >= 0 && to >= 0) reorderTabSessions(dragFromTab, to)
+                    dragFromTab = -1
+                    true
+                }
+                else -> false
+            }
+        }
+        attachTabStripChildListeners()
+    }
+
+    /** Per-child long-press + drag-start listeners; call after every tab view (re)creation. */
+    private fun attachTabStripChildListeners() {
+        val strip = binding.tabLayout.getChildAt(0) as? android.view.ViewGroup ?: return
+        for (child in binding.tabLayout.touchables) {
+            child.setOnLongClickListener { showTabCloseMenu(); true }
+            child.setOnTouchListener { v, e ->
+                if (prefs.getBoolean("tab_bar_locked", false)) return@setOnTouchListener false
+                if (e.action == android.view.MotionEvent.ACTION_DOWN) {
+                    dragFromTab = tabPositionAt(strip, e.rawX - strip.x)
+                }
+                if (e.action == android.view.MotionEvent.ACTION_MOVE && dragFromTab in 0 until tabs.size) {
+                    val dragData = android.content.ClipData.newPlainText("tab", dragFromTab.toString())
+                    v.startDragAndDrop(dragData, android.view.View.DragShadowBuilder(v), null, 0)
+                    dragFromTab = -1
+                }
+                false
+            }
+        }
+    }
+
+    /** Maps an x coordinate within the tab strip to a tab index, clamped. */
+    private fun tabPositionAt(strip: android.view.ViewGroup, x: Float): Int {
+        var best = -1
+        var bestDist = Float.MAX_VALUE
+        for (i in 0 until strip.childCount) {
+            val c = strip.getChildAt(i)
+            val cx = c.x + c.width / 2f
+            val d = kotlin.math.abs(cx - x)
+            if (d < bestDist) { bestDist = d; best = i }
+        }
+        return best.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
+    }
+
+    /** Moves a tab session from [from] to [to], keeping the pinned group leading. */
+    private fun reorderTabSessions(from: Int, to: Int) {
+        if (from == to || from < 0 || to < 0 || from >= tabs.size || to >= tabs.size) return
+        val s = tabs[from]
+        if (s.pinned != tabs[to].pinned) return  // groups stay contiguous
+        val activeBefore = activeSession()
+        tabs.removeAt(from)
+        tabs.add(to, s)
+        rebuildTabLayout()
+        activateTab(tabs.indexOf(activeBefore ?: s).coerceAtLeast(0))
+        refreshTabLabels()
+    }
+
+    private val tabMaxLabelChars: Int get() = prefs.getInt("tab_max_label_chars", 0)
+    private val tabDoubleClickClose: Boolean get() = prefs.getBoolean("tab_double_click_close", false)
+
     private fun refreshTabLabels() {
+        val maxChars = tabMaxLabelChars
         tabs.forEach { s ->
             val label = s.tab?.customView?.findViewById<android.widget.TextView>(R.id.tab_label)
-            label?.text = if (s.document.modified) "● ${s.document.fileName}" else s.document.fileName
+            val base = if (s.document.modified) "● ${s.document.fileName}" else s.document.fileName
+            val marked = if (s.pinned) "📌 " else ""
+            label?.text = marked + TabBar.elideLabel(base, maxChars)
         }
     }
 
@@ -879,6 +1004,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
             val charset = Charset.forName(s.document.encoding)
             val text = s.document.text
             files.save(uri, text, charset, s.document.lineEnding, s.document.hasBom)
+            s.changeHistory.recordSave(text)
+            s.baselineText = text
             s.document = s.document.copy(
                 uri = uri.toString(),
                 fileName = files.displayName(uri),
@@ -918,28 +1045,129 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .show()
     }
 
+    /** Notepad++ extended close menu on the current tab (#52). */
     private fun showTabCloseMenu() {
+        val anchor = active.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
         popup {
             item(getString(R.string.action_close)) { closeTabAt(active) }
             activeSession()?.let { s -> item(getString(R.string.action_open_containing_folder)) { openContainingFolder(s) } }
+            item(getString(R.string.action_save)) { saveActive() }
+            item(getString(R.string.action_save_as)) { activeSession()?.let { saveAsWithEncoding(it) } }
+            if (activeSession()?.document?.uri == null) {
+                item(getString(R.string.action_rename)) { promptRenameTab(activeSession() ?: return@item) }
+            }
+            val s = activeSession()
+            if (s != null && prefs.getBoolean("tab_pin_enabled", true)) {
+                item(if (s.pinned) getString(R.string.tab_unpin) else getString(R.string.tab_pin)) {
+                    togglePinAt(anchor)
+                }
+            }
+            item(getString(R.string.action_move_start)) { moveTab(anchor, toStart = true) }
+            item(getString(R.string.action_move_end)) { moveTab(anchor, toStart = false) }
+            item(getString(R.string.action_close_this_but)) { closeAllButThis(anchor) }
+            item(getString(R.string.action_close_but_pinned)) { closeAllButPinned() }
+            item(getString(R.string.action_close_left)) { closeRange(TabBar.closeAllToLeft(anchor)) }
+            item(getString(R.string.action_close_right)) { closeRange(TabBar.closeAllToRight(tabs.size, anchor)) }
             item(getString(R.string.action_close_others)) {
                 val keep = active
+                val keepSession = activeSession()
                 val dirty = tabs.count { it.document.modified && tabs.indexOf(it) != keep }
-                tabs.indices.filterNot { it == keep }.reversed().forEach { idx ->
-                    if (!tabs[idx].document.modified) removeTab(idx)
+                TabBar.closeAllButThis(tabs.size, keep).forEach { idx ->
+                    if (!tabs[idx].document.modified && !tabs[idx].pinned) removeTab(idx)
                 }
-                activateTab(0.coerceAtMost(tabs.size - 1))
+                val target = keepSession?.let { tabs.indexOf(it) }?.coerceAtLeast(0) ?: 0
+                activateTab(target.coerceAtMost(tabs.size - 1))
                 if (dirty > 0) Toast.makeText(this@MainActivity, getString(R.string.tabs_kept_dirty, dirty), Toast.LENGTH_SHORT).show()
             }
             item(getString(R.string.action_close_all)) {
                 val dirty = tabs.count { it.document.modified }
                 tabs.indices.reversed().forEach { idx ->
-                    if (!tabs[idx].document.modified) removeTab(idx)
+                    if (!tabs[idx].document.modified && !tabs[idx].pinned) removeTab(idx)
                 }
                 if (tabs.isEmpty()) addTab(null, null)
                 if (dirty > 0) Toast.makeText(this@MainActivity, getString(R.string.tabs_kept_dirty, dirty), Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun togglePinAt(index: Int) {
+        val s = tabs.getOrNull(index) ?: return
+        s.pinned = !s.pinned
+        reorderPinnedToFront()
+        rebuildTabLayout()
+        activateTab(tabs.indexOf(s).coerceAtLeast(0))
+        refreshTabLabels()
+    }
+
+    /** Restores the Notepad++ pinned-first group order in the sessions list. */
+    private fun reorderPinnedToFront() {
+        val pinnedIdx = tabs.withIndex().filter { it.value.pinned }.map { it.index }.toSet()
+        val order = TabBar.pinnedFirstOrder(tabs.size, pinnedIdx)
+        if (order.isEmpty()) return
+        val reordered = order.map { tabs[it] }
+        val activeSessionBefore = activeSession()
+        tabs.clear()
+        tabs.addAll(reordered)
+        active = tabs.indexOf(activeSessionBefore).coerceAtLeast(0)
+    }
+
+    private fun moveTab(index: Int, toStart: Boolean) {
+        val s = tabs.getOrNull(index) ?: return
+        tabs.removeAt(index)
+        if (toStart) {
+            val firstUnpinned = tabs.indexOfFirst { !it.pinned }.let { if (it < 0) tabs.size else it }
+            tabs.add(firstUnpinned, s)
+        } else tabs.add(s)
+        rebuildTabLayout()
+        activateTab(tabs.indexOf(s).coerceAtLeast(0))
+        refreshTabLabels()
+    }
+
+    private fun closeAllButThis(anchor: Int) {
+        val anchorSession = tabs.getOrNull(anchor)
+        val dirty = tabs.count { it.document.modified && tabs.indexOf(it) != anchor }
+        TabBar.closeAllButThis(tabs.size, anchor).forEach { idx ->
+            if (!tabs[idx].document.modified && !tabs[idx].pinned) removeTab(idx)
+        }
+        // Notepad++ keeps the current tab active after Close All BUT This
+        val target = anchorSession?.let { tabs.indexOf(it) }?.coerceAtLeast(0) ?: 0
+        activateTab(target.coerceAtMost(tabs.size - 1))
+        if (dirty > 0) Toast.makeText(this, getString(R.string.tabs_kept_dirty, dirty), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun closeAllButPinned() {
+        val pinnedIdx = tabs.withIndex().filter { it.value.pinned }.map { it.index }.toSet()
+        val dirty = tabs.count { !it.pinned && it.document.modified }
+        TabBar.closeAllButPinned(tabs.size, pinnedIdx).forEach { idx ->
+            if (!tabs[idx].document.modified) removeTab(idx)
+        }
+        if (tabs.isEmpty()) addTab(null, null) else activateTab(0)
+        if (dirty > 0) Toast.makeText(this, getString(R.string.tabs_kept_dirty, dirty), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun closeRange(indices: List<Int>) {
+        val dirty = indices.count { tabs.getOrNull(it)?.document?.modified == true }
+        indices.forEach { idx ->
+            val s = tabs.getOrNull(idx) ?: return@forEach
+            if (!s.document.modified && !s.pinned) removeTab(idx)
+        }
+        activateTab(0.coerceIn(0, (tabs.size - 1).coerceAtLeast(0)))
+        if (dirty > 0) Toast.makeText(this, getString(R.string.tabs_kept_dirty, dirty), Toast.LENGTH_SHORT).show()
+    }
+
+    /** Renames an untitled tab (label only; the file name follows the first Save As). */
+    private fun promptRenameTab(s: TabSession) {
+        val input = EditText(this).apply { setText(s.document.fileName) }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.action_rename)
+            .setView(input)
+            .setPositiveButton(R.string.md_link_ok) { _, _ ->
+                val name = input.text.toString().ifBlank { s.document.fileName }
+                s.document = s.document.copy(fileName = name)
+                refreshTabLabels()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun closeActive() {
@@ -1086,7 +1314,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.setText(prev)
         editor.setSelection(prev.length)
         editor.addTextChangedListener(tw)
+        s.changeHistory.reconcile(prev, s.baselineText.ifEmpty { prev })
         s.document = s.document.copy(text = prev, modified = s.document.uri != null || prev.isNotEmpty())
+        editor.changeHistory = s.changeHistory.markedLines()
         refreshTabLabels()
         updateStatus()
     }
@@ -1100,7 +1330,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.setText(next)
         editor.setSelection(next.length)
         editor.addTextChangedListener(tw)
+        s.changeHistory.reconcile(next, s.baselineText.ifEmpty { next })
         s.document = s.document.copy(text = next, modified = s.document.uri != null || next.isNotEmpty())
+        editor.changeHistory = s.changeHistory.markedLines()
         refreshTabLabels()
         updateStatus()
     }
@@ -1322,6 +1554,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
                     modified = false
                 )
                 s.history.clear()
+                s.changeHistory.reset()
+                s.baselineText = loaded.text
+                editor.changeHistory = emptyMap()
                 editor.filters = emptyArray()
                 editor.removeTextChangedListener(tw)
                 editor.setText(loaded.text)
@@ -1452,6 +1687,21 @@ class MainActivity : AppCompatActivity(), PluginHost {
         }
     }
 
+    /** Notepad++ Convert-to: switch the save encoding after verifying the text fits. */
+    private fun convertToEncoding(name: String) {
+        val s = activeSession() ?: return
+        val target = runCatching { Charset.forName(name) }.getOrNull() ?: return
+        syncActiveDocument()
+        if (!TextUtils.canRepresent(s.document.text, target)) {
+            Toast.makeText(this, getString(R.string.convert_unrepresentable, name), Toast.LENGTH_LONG).show()
+            return
+        }
+        s.document = s.document.copy(encoding = name, modified = true)
+        refreshTabLabels()
+        updateStatus()
+        Toast.makeText(this, getString(R.string.convert_done, name), Toast.LENGTH_SHORT).show()
+    }
+
     private fun setEol(eol: String) {
         activeSession()?.let {
             it.document = it.document.copy(lineEnding = eol)
@@ -1571,24 +1821,27 @@ class MainActivity : AppCompatActivity(), PluginHost {
     /** Rebuilds the TabLayout from the sessions list, preserving per-tab views. */
     private fun rebuildTabLayout() {
         val layout = binding.tabLayout
+        val showClose = prefs.getBoolean("tab_show_close", true)
         for (child in layout.touchables) child.setOnLongClickListener(null)
         layout.removeAllTabs()
+        val maxChars = tabMaxLabelChars
         tabs.forEach { s ->
             val tab = layout.newTab()
             tab.setCustomView(R.layout.tab_item)
             s.tab = tab
             val label = tab.customView?.findViewById<android.widget.TextView>(R.id.tab_label)
             val closeBtn = tab.customView?.findViewById<android.widget.ImageView>(R.id.tab_close)
-            label?.text = s.document.fileName
+            val base = if (s.document.modified) "● ${s.document.fileName}" else s.document.fileName
+            val marked = if (s.pinned) "📌 " else ""
+            label?.text = marked + TabBar.elideLabel(base, maxChars)
+            closeBtn?.visibility = if (showClose || s == activeSession()) android.view.View.VISIBLE else android.view.View.GONE
             closeBtn?.setOnClickListener {
                 val idx = tabs.indexOfFirst { it.tab === tab }
                 if (idx >= 0) closeTabAt(idx)
             }
             layout.addTab(tab)
         }
-        for (child in layout.touchables) {
-            child.setOnLongClickListener { showTabCloseMenu(); true }
-        }
+        attachTabStripChildListeners()
     }
 
     // ---- Macro menu (#45) ----
@@ -2482,11 +2735,31 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun showEncodingMenu() = popup {
+        menu.add(getString(R.string.encoding_set_title)).isEnabled = false
         TextUtils.names().forEach { name -> item(name) { setEncoding(name) } }
+        item(getString(R.string.convert_to_title)) { showConvertToMenu() }
+        item(getString(R.string.charsets_title)) { showCharsetsMenu() }
         menu.add(getString(R.string.eol_title)).isEnabled = false
         item(getString(R.string.windows_format)) { setEol("\r\n") }
         item(getString(R.string.unix_format)) { setEol("\n") }
         item(getString(R.string.mac_format)) { setEol("\r") }
+    }
+
+    private fun showConvertToMenu() = popup {
+        TextUtils.allCharsets().forEach { cs -> item(cs.name()) { convertToEncoding(cs.name()) } }
+    }
+
+    private fun showCharsetsMenu() {
+        popup {
+            TextUtils.CHARSET_FAMILIES.forEach { (family, names) ->
+                val available = names.filter { TextUtils.isCharsetAvailable(it) }
+                if (available.isEmpty()) return@forEach
+                val sub = menu.addSubMenu(family)
+                available.forEach { name ->
+                    sub.add(name).setOnMenuItemClickListener { setEncoding(name); true }
+                }
+            }
+        }
     }
 
     private fun showLanguagesMenu() = popup {

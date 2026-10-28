@@ -28,7 +28,37 @@ enum class LanguageMode(val displayName: String, val extensions: Set<String>) {
     RUBY("Ruby", setOf("rb")),
     LUA("Lua", setOf("lua")),
     MAKEFILE("Makefile", setOf("mk")),
-    TEX("TeX", setOf("tex"));
+    TEX("TeX", setOf("tex")),
+    TOML("TOML", setOf("toml")),
+    POWERSHELL("PowerShell", setOf("ps1", "psm1", "psd1")),
+    PERL("Perl", setOf("pl", "pm", "cgi")),
+    CMAKE("CMake", setOf("cmake")),
+    DIFF("Diff", setOf("diff", "patch")),
+    VHDL("VHDL", setOf("vhd", "vhdl")),
+    VERILOG("Verilog", setOf("v", "sv")),
+    ASSEMBLY("Assembly", setOf("asm", "s")),
+    AUTOIT("AutoIt", setOf("au3")),
+    COFFEESCRIPT("CoffeeScript", setOf("coffee")),
+    LISP("Lisp", setOf("lisp", "lsp", "cl")),
+    SCHEME("Scheme", setOf("scm", "ss")),
+    PASCAL("Pascal", setOf("pas", "pp", "dpr")),
+    ADA("Ada", setOf("adb", "ads", "ada")),
+    FORTRAN("Fortran", setOf("f", "for", "f90", "f95")),
+    HASKELL("Haskell", setOf("hs", "lhs")),
+    ERLANG("Erlang", setOf("erl", "hrl")),
+    R("R", setOf("r", "rdata")),
+    TCL("Tcl", setOf("tcl", "tk")),
+    MATLAB("Matlab", setOf("m")),
+    OBJECTIVE_C("Objective-C", setOf("mm", "m")),
+    VISUALBASIC("Visual Basic", setOf("vb", "bas", "frm")),
+    COBOL("COBOL", setOf("cbl", "cob")),
+    SMALLTALK("Smalltalk", setOf("st")),
+    POSTSCRIPT("PostScript", setOf("ps", "eps")),
+    D("D", setOf("d", "di")),
+    NIM("Nim", setOf("nim", "nims")),
+    FORTH("Forth", setOf("4th", "ft", "fth")),
+    ACTIONSCRIPT("ActionScript", setOf("as")),
+    NFO("NFO", setOf("nfo"));
 
     companion object {
         fun fromFileName(name: String): LanguageMode {
@@ -38,6 +68,7 @@ enum class LanguageMode(val displayName: String, val extensions: Set<String>) {
             }
             val base = name.lowercase()
             if (base == "makefile" || base == "gnumakefile") return MAKEFILE
+            if (base == "cmakelists.txt") return CMAKE
             return NORMAL_TEXT
         }
     }

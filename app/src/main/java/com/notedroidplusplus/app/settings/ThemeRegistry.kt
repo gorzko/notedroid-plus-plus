@@ -23,7 +23,12 @@ data class EditorTheme(
     val bracket: Int,
     val statusBg: Int,
     val statusText: Int,
-    val syntax: Map<com.notedroidplusplus.app.TokenKind, Int>
+    val syntax: Map<com.notedroidplusplus.app.TokenKind, Int>,
+    /** Change History margin colors (Notepad++ stylers.model.xml defaults). */
+    val changeModifiedUnsaved: Int = 0xFFFF9966.toInt(),
+    val changeModifiedSaved: Int = 0xFF66CC66.toInt(),
+    val changeRevertModified: Int = 0xFF99CC99.toInt(),
+    val changeRevertOriginal: Int = 0xFF99CCFF.toInt()
 )
 
 object ThemeRegistry {

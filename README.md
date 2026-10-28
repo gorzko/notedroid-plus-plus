@@ -9,9 +9,12 @@ icon, dark theme, back/forward gesture support).
 
 **Notepad++ core**
 - Multi-tab editing with per-tab dirty markers (●)
-- Syntax highlighting for 20+ languages (C, C++, C#, Java, Kotlin, Python, JS, TS,
+- Syntax highlighting for 55+ languages (C, C++, C#, Java, Kotlin, Python, JS, TS,
   HTML, XML, CSS, JSON, YAML, SQL, Shell, Batch, INI, PHP, Go, Rust, Swift, Ruby,
-  Lua, Makefile, Markdown, TeX) modeled on Notepad++ `stylers.model.xml` colors
+  Lua, Makefile, Markdown, TeX, TOML, PowerShell, Perl, CMake, Diff, VHDL, Verilog,
+  Assembly, AutoIt, CoffeeScript, Lisp, Scheme, Pascal, Ada, Fortran, Haskell,
+  Erlang, R, Tcl, Matlab, Objective-C, Visual Basic, COBOL, Smalltalk, PostScript,
+  D, Nim, Forth, ActionScript) modeled on Notepad++ `stylers.model.xml` colors
 - Line numbers, current-line highlight, bracket matching
 - Find / Replace with match case, whole word, regular expressions, wrap-around
   (Find Next / Find Prev buttons, keyboard search action)
@@ -33,6 +36,12 @@ icon, dark theme, back/forward gesture support).
   (input blocked, status-bar indicator)
 - Encoding detection & conversion (UTF-8, UTF-16LE/BE, ASCII, ISO-8859-1, CP-1252);
   BOM detection is preserved on save
+- Encoding menu: Character Sets submenus grouped by family (Arabic, Baltic, Celtic,
+  Central European, Chinese, Cyrillic, Greek, Hebrew, Japanese, Korean, Latin,
+  Nordic, Romanian, Thai, Turkish, Vietnamese, Western European), explicit
+  Convert-to actions that re-encode on save with glyphs unchanged (lossless
+  round-trip verified, conversion cancelled with an error toast otherwise), and
+  XML/HTML prolog-first encoding auto-detection (bounded 4 KB scan)
 - EOL conversion: Windows (CRLF), Unix (LF), Mac (CR)
 - State restoration across rotation (instance state) and hard process kill
   (session snapshot with restore prompt on cold start)
@@ -76,6 +85,14 @@ icon, dark theme, back/forward gesture support).
 - Settings sections: New Document defaults, Indentation, Searching
   (auto-fill), Backup (session snapshot + periodic dirty-buffer backup),
   Performance (highlight threshold)
+- Tab bar: pin tabs (leading group, survive Close All/Others), lock (no drag
+  reorder), double-click to close, max label length with ellipsize, show close
+  button, multi-line mode, and the extended close menu (Close All BUT This /
+  BUT Pinned / to the Left / to the Right, Move to Start/End, Save, Save As,
+  Rename for untitled tabs)
+- Change History margin: per-line modified (orange), saved (green), reverted to
+  modified (pale green) and reverted to original (pale blue) coloring, with
+  Settings > Margins toggles for margin and in-text display; reset on reload
 
 **New built-in features**
 - **In-tab preview** for Markdown and HTML: a document view mode toggled from

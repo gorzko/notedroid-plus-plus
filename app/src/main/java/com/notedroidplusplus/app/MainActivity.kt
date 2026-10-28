@@ -10,6 +10,9 @@ import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
 import android.print.PrintDocumentInfo
 import android.print.PrintManager
+import android.print.PrintDocumentAdapter.LayoutResultCallback
+import android.print.PrintDocumentAdapter.WriteResultCallback
+import android.os.CancellationSignal
 import android.text.InputFilter
 import android.text.Layout
 import android.text.StaticLayout
@@ -569,7 +572,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun applyReadOnly(s: TabSession) {
-        editor.filters = if (s.readOnly) arrayOf(InputFilter { _, _, _, _ -> "" }) else emptyArray()
+        editor.filters = if (s.readOnly) {
+            arrayOf(InputFilter { source, _, _, _, _, _ -> if (source.isNullOrEmpty()) null else "" })
+        } else emptyArray()
     }
 
     private fun isEditorLocked(): Boolean = activeSession()?.readOnly == true
@@ -1116,7 +1121,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         val text = s.document.text.ifEmpty { " " }
         val adapter = object : PrintDocumentAdapter() {
             override fun onLayout(oldAttributes: PrintAttributes?, newAttributes: PrintAttributes,
-                                  cancellationSignal: android.print.CancellationSignal?, callback: LayoutResultCallback, extras: android.os.Bundle?) {
+                                  cancellationSignal: CancellationSignal?, callback: LayoutResultCallback, extras: android.os.Bundle?) {
                 if (cancellationSignal?.isCanceled == true) {
                     callback.onLayoutCancelled()
                     return
@@ -1127,7 +1132,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             }
 
             override fun onWrite(pages: Array<out android.print.PageRange>?, destination: android.os.ParcelFileDescriptor,
-                                 cancellationSignal: android.print.CancellationSignal?, callback: WriteResultCallback) {
+                                 cancellationSignal: CancellationSignal?, callback: WriteResultCallback) {
                 Thread {
                     try {
                         if (cancellationSignal?.isCanceled == true) {

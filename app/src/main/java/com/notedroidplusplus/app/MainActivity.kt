@@ -598,7 +598,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
             else -> "Unix (LF)"
         }
         binding.statusLanguage.text = s?.document?.language?.displayName ?: ""
-        val md = s?.document?.language == LanguageMode.MARKDOWN && previewMode == null
+        val md = s != null && previewMode == null && PreviewView.modeFor(
+            text,
+            s.document.language == LanguageMode.MARKDOWN,
+            s.document.language == LanguageMode.HTML
+        ) == PreviewView.Mode.MARKDOWN
         binding.markdownToolbar.visibility = if (md) View.VISIBLE else View.GONE
     }
 

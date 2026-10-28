@@ -18,6 +18,30 @@ class MarkdownActionsTest {
     fun boldTogglesOff() {
         val r = MarkdownActions.bold("**hello** world", 2, 7)
         assertEquals("hello world", r.text)
+        assertEquals(0, r.newStart)
+        assertEquals(5, r.newEnd)
+    }
+
+    @Test
+    fun boldTogglesOffWhenSelectionIncludesMarkers() {
+        val r = MarkdownActions.bold("**hello** world", 0, 9)
+        assertEquals("hello world", r.text)
+        assertEquals(0, r.newStart)
+        assertEquals(5, r.newEnd)
+    }
+
+    @Test
+    fun italicTogglesOffWhenSelectionIncludesMarkers() {
+        val r = MarkdownActions.italic("a *hi* b", 2, 6)
+        assertEquals("a hi b", r.text)
+        assertEquals(2, r.newStart)
+        assertEquals(4, r.newEnd)
+    }
+
+    @Test
+    fun singleMarkerCharDoesNotUnwrap() {
+        val r = MarkdownActions.italic("*", 0, 1)
+        assertEquals("***", r.text)
     }
 
     @Test
@@ -42,12 +66,38 @@ class MarkdownActionsTest {
     fun headingAddsHashesAtLineStart() {
         val r = MarkdownActions.heading("hello\nworld", 6, 6, 2)
         assertEquals("hello\n## world", r.text)
+        assertEquals(9, r.newStart)
+        assertEquals(9, r.newEnd)
     }
 
     @Test
     fun headingReplacesExistingLevel() {
         val r = MarkdownActions.heading("## title", 0, 8, 3)
         assertEquals("### title", r.text)
+        assertEquals(4, r.newStart)
+        assertEquals(9, r.newEnd)
+    }
+
+    @Test
+    fun headingKeepsCaretWithinBody() {
+        val r = MarkdownActions.heading("## title", 4, 9, 3)
+        assertEquals("### title", r.text)
+        assertEquals(5, r.newStart)
+        assertEquals(9, r.newEnd)
+    }
+
+    @Test
+    fun headingDoesNotEatSevenHashLines() {
+        val r = MarkdownActions.heading("####### text", 0, 12, 2)
+        assertEquals("## ####### text", r.text)
+    }
+
+    @Test
+    fun headingOnEmptyLine() {
+        val r = MarkdownActions.heading("", 0, 0, 2)
+        assertEquals("##", r.text)
+        assertEquals(2, r.newStart)
+        assertEquals(2, r.newEnd)
     }
 
     @Test
@@ -69,12 +119,43 @@ class MarkdownActionsTest {
         val text = "- alpha\n- beta"
         val r = MarkdownActions.list(text, 0, text.length, ordered = false)
         assertEquals("alpha\nbeta", r.text)
+        assertEquals(0, r.newStart)
+        assertEquals("alpha\nbeta".length, r.newEnd)
+    }
+
+    @Test
+    fun mixedListBlockTogglesAllMarkersOff() {
+        val text = "- alpha\nbeta"
+        val r = MarkdownActions.list(text, 0, text.length, ordered = false)
+        assertEquals("alpha\nbeta", r.text)
+        val again = MarkdownActions.list(r.text, r.newStart, r.newEnd, ordered = false)
+        assertEquals("- alpha\n- beta", again.text)
+    }
+
+    @Test
+    fun mixedOrderedBlockTogglesAllMarkersOff() {
+        val text = "1. alpha\nbeta"
+        val r = MarkdownActions.list(text, 0, text.length, ordered = true)
+        assertEquals("alpha\nbeta", r.text)
+    }
+
+    @Test
+    fun alreadyMarkedLinesAreNotDoubleMarked() {
+        val text = "- alpha\nbeta"
+        val r = MarkdownActions.list(text, 0, text.length, ordered = false)
+        assertEquals("alpha\nbeta", r.text)
+        assertEquals(0, r.newStart)
+        assertEquals("alpha\nbeta".length, r.newEnd)
+        val again = MarkdownActions.list(r.text, r.newStart, r.newEnd, ordered = true)
+        assertEquals("1. alpha\n2. beta", again.text)
     }
 
     @Test
     fun linkInsertsLabelAndUrl() {
         val r = MarkdownActions.link("see  here", 4, 4, "https://x.y", "docs")
         assertEquals("see [docs](https://x.y) here", r.text)
+        assertEquals(4, r.newStart)
+        assertEquals(4 + "[docs](https://x.y)".length, r.newEnd)
     }
 
     @Test
@@ -87,6 +168,8 @@ class MarkdownActionsTest {
     fun codeBlockFencesSelection() {
         val r = MarkdownActions.codeBlock("x = 1", 0, 5)
         assertEquals("```\nx = 1\n```", r.text)
+        assertEquals(0, r.newStart)
+        assertEquals("```\nx = 1\n```".length, r.newEnd)
     }
 
     @Test

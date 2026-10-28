@@ -18,15 +18,20 @@ object MarkdownActions {
         val sel = text.substring(s, e)
         val before = text.substring(0, s)
         val after = text.substring(e)
-        val wrapped = before.endsWith(marker) && after.startsWith(marker)
-        return if (wrapped) {
-            Result(
+        val outside = before.endsWith(marker) && after.startsWith(marker)
+        val inside = sel.startsWith(marker) && sel.endsWith(marker) && sel.length >= 2 * marker.length
+        return when {
+            outside -> Result(
                 before.substring(0, before.length - marker.length) + sel + after.substring(marker.length),
                 s - marker.length,
                 e - marker.length
             )
-        } else {
-            Result(before + marker + sel + marker + after, s + marker.length, e + marker.length)
+            inside -> {
+                val body = sel.substring(marker.length, sel.length - marker.length)
+                val newText = before + body + after
+                Result(newText, s, s + body.length)
+            }
+            else -> Result(before + marker + sel + marker + after, s + marker.length, e + marker.length)
         }
     }
 
@@ -41,15 +46,17 @@ object MarkdownActions {
         val lineStart = text.lastIndexOf('\n', s - 1).let { if (it == -1) 0 else it + 1 }
         val lineEnd = text.indexOf('\n', s).let { if (it == -1) text.length else it }
         val line = text.substring(lineStart, lineEnd)
-        val existing = Regex("^#{1,6}\\s*").find(line)?.value?.length ?: 0
+        val existing = Regex("^#{1,6}(?:\\s|$)").find(line)?.value?.length ?: 0
         val body = if (existing > 0) line.substring(existing) else line
         val lvl = level.coerceIn(1, MAX_HEADING_LEVEL)
-        val newLine = "${"#".repeat(lvl)} $body".trimEnd()
+        val prefix = "${"#".repeat(lvl)} "
+        val newLine = (prefix + body).trimEnd()
         val newText = text.substring(0, lineStart) + newLine + text.substring(lineEnd)
-        val delta = newLine.length - line.length
-        val lo = (lineStart + newLine.length).coerceAtMost(s + delta)
-        val hi = (lineStart + newLine.length).coerceAtMost(e + delta)
-        return Result(newText, lo.coerceAtLeast(lineStart), hi.coerceAtLeast(lo))
+        val prefixDelta = prefix.length - existing
+        val bodyStart = lineStart + prefix.length.coerceAtMost(newLine.length)
+        val lo = (s + prefixDelta).coerceIn(bodyStart, lineStart + newLine.length)
+        val hi = (e + prefixDelta).coerceIn(lo, lineStart + newLine.length)
+        return Result(newText, lo, hi)
     }
 
     fun list(text: String, start: Int, end: Int, ordered: Boolean): Result {
@@ -60,9 +67,10 @@ object MarkdownActions {
         val block = text.substring(lineStart, lineEnd)
         var index = 0
         val markerRegex = Regex("^(\\s*)(?:[-*+]|\\d+\\.)\\s+")
-        val allMarked = block.lines().all { it.isEmpty() || markerRegex.containsMatchIn(it) }
-        val newBlock = block.lines().joinToString("\n") { line ->
-            if (allMarked) {
+        val lines = block.lines()
+        val anyMarked = lines.any { markerRegex.containsMatchIn(it) }
+        val newBlock = lines.joinToString("\n") { line ->
+            if (anyMarked) {
                 line.replaceFirst(markerRegex, "$1")
             } else if (line.isBlank()) {
                 line

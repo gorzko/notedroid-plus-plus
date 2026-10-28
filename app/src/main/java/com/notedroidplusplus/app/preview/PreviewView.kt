@@ -6,6 +6,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import com.notedroidplusplus.app.R
+import com.notedroidplusplus.app.editing.ContentSniffer
 
 /**
  * In-tab preview surface: renders Markdown (converted to HTML) or raw HTML in
@@ -77,15 +78,7 @@ class PreviewView @JvmOverloads constructor(
             if (trimmed.startsWith("<!DOCTYPE html", ignoreCase = true) ||
                 trimmed.startsWith("<html", ignoreCase = true)
             ) return Mode.HTML
-            var mdMarkers = 0
-            for (line in head.lines()) {
-                val t = line.trimEnd()
-                if (Regex("^#{1,6}\\s+\\S").containsMatchIn(t)) mdMarkers++
-                if (t.startsWith("```") || t.startsWith("~~~")) mdMarkers++
-                if (Regex("\\[[^]]+]\\([^)]+\\)").containsMatchIn(t)) mdMarkers++
-                if (Regex("^\\s*([-*+]|\\d+\\.)\\s+\\S").containsMatchIn(t)) mdMarkers++
-            }
-            if (mdMarkers >= 1) return Mode.MARKDOWN
+            if (ContentSniffer.markdownMarkerScore(head.lines()) >= 1) return Mode.MARKDOWN
             return null
         }
     }

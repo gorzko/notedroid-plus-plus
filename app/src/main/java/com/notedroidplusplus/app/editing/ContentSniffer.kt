@@ -69,7 +69,7 @@ object ContentSniffer {
         if (looksLikeIni(head.lines())) return LanguageMode.INI
 
         // Markdown: headings, fenced code, links.
-        val mdScore = markdownScore(lines)
+        val mdScore = markdownMarkerScore(lines)
         if (mdScore >= 2) return LanguageMode.MARKDOWN
 
         // SQL: SELECT ... FROM statements.
@@ -147,18 +147,30 @@ object ContentSniffer {
         return section && kv >= 1 || kv >= 2
     }
 
-    private fun markdownScore(lines: List<String>): Int {
+    private val MD_HEADING = Regex("^#{1,6}\\s+\\S")
+    private val MD_LINK = Regex("\\[[^]]+]\\([^)]+\\)")
+    private val MD_LIST_ITEM = Regex("^\\s*([-*+]|\\d+\\.)\\s+\\S")
+    private val MD_QUOTE = Regex("^>{1,3}\\s")
+    private val MD_SETEXT = Regex("^[=-]{3,}$")
+
+    /**
+     * Shared Markdown marker detection: scores headings, fenced code, links,
+     * list markers, blockquotes and setext rules over a bounded line list.
+     * Used both by [detect] and by the preview/toolbar content sniffing so
+     * every surface agrees on what counts as a Markdown document.
+     */
+    fun markdownMarkerScore(lines: List<String>): Int {
         var score = 0
         var scanned = 0
         for (line in lines) {
             if (scanned++ > 120) break
             val t = line.trimEnd()
-            if (Regex("^#{1,6}\\s+\\S").containsMatchIn(t)) score++
+            if (MD_HEADING.containsMatchIn(t)) score++
             if (t.startsWith("```") || t.startsWith("~~~")) score++
-            if (Regex("\\[[^]]+]\\([^)]+\\)").containsMatchIn(t)) score++
-            if (Regex("^\\s*([-*+]|\\d+\\.)\\s+\\S").containsMatchIn(t)) score++
-            if (Regex("^>{1,3}\\s").containsMatchIn(t)) score++
-            if (Regex("^[=-]{3,}$").containsMatchIn(t)) score++
+            if (MD_LINK.containsMatchIn(t)) score++
+            if (MD_LIST_ITEM.containsMatchIn(t)) score++
+            if (MD_QUOTE.containsMatchIn(t)) score++
+            if (MD_SETEXT.containsMatchIn(t)) score++
         }
         return score
     }

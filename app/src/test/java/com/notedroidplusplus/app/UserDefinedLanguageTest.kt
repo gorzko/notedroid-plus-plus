@@ -139,4 +139,18 @@ class UserDefinedLanguageTest {
         store.save(b)
         assertEquals(1, store.list().size)
     }
+
+    @Test
+    fun editWithRenameLeavesSingleDefinition() {
+        val store = UserDefinedLanguageStore(tmp.newFolder())
+        val original = fixture()
+        store.save(original)
+        val renamed = original.copy(name = "MyLang2")
+        store.save(renamed)
+        store.delete(original.name)
+        val list = store.list()
+        assertEquals(1, list.size)
+        assertEquals("MyLang2", list[0].name)
+        assertNull(store.findByName("MyLang"))
+    }
 }

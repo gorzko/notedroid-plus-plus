@@ -1905,6 +1905,21 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 )
                 try {
                     udlStore.save(udl)
+                    // Editing with a rename must remove the old definition, not
+                    // duplicate it; tabs referencing the old name get the new one
+                    // via the post-save re-bind below.
+                    if (existing != null && !existing.name.equals(udl.name, ignoreCase = true)) {
+                        udlStore.delete(existing.name)
+                        tabs.forEach { s ->
+                            if (s.udlName.equals(existing.name, ignoreCase = true)) {
+                                s.udlName = udl.name
+                                if (s === activeSession()) {
+                                    editor.udl = udl
+                                    updateStatus()
+                                }
+                            }
+                        }
+                    }
                     Toast.makeText(this, getString(R.string.udl_saved, udl.name), Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
                     Toast.makeText(this, getString(R.string.udl_save_failed, e.message), Toast.LENGTH_LONG).show()

@@ -20,7 +20,11 @@ object MarkdownActions {
         val after = text.substring(e)
         val outside = before.endsWith(marker) && after.startsWith(marker)
         val inside = sel.startsWith(marker) && sel.endsWith(marker) && sel.length >= 2 * marker.length
+        val caretInsideSpan = s == e && outside &&
+            s - marker.length >= 0 && e + marker.length <= text.length &&
+            sel.isNotEmpty()
         return when {
+            caretInsideSpan -> Result(text, s, e)
             outside -> Result(
                 before.substring(0, before.length - marker.length) + sel + after.substring(marker.length),
                 s - marker.length,

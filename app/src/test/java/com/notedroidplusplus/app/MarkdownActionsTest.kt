@@ -177,4 +177,25 @@ class MarkdownActionsTest {
         val r = MarkdownActions.table("before", 6)
         assertEquals("before\n\n| Column 1 | Column 2 |\n| --- | --- |\n|  |  |", r.text)
     }
+    @Test
+    fun collapsedCaretInsideMarkerPairDoesNotDoubleWrap() {
+        val r = MarkdownActions.toggleSpan("**x**", 2, 2, "**")
+        assertEquals("**x**", r.text)
+        assertEquals(2, r.newStart)
+        assertEquals(2, r.newEnd)
+    }
+
+    @Test
+    fun collapsedCaretAtSpanEdgeStillUnwraps() {
+        val r = MarkdownActions.toggleSpan("**x**", 0, 0, "**")
+        assertEquals("x**", r.text)
+        val r2 = MarkdownActions.toggleSpan("**x**", 5, 5, "**")
+        assertEquals("**x", r2.text)
+    }
+
+    @Test
+    fun collapsedCaretOutsideAnySpanStillWraps() {
+        val r = MarkdownActions.toggleSpan("ab", 1, 1, "**")
+        assertEquals("a****b", r.text)
+    }
 }

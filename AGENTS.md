@@ -57,3 +57,4 @@ Android port of Notepad++ ("NoteDroid++"): Kotlin, Material 3, multi-tab code ed
 
 - #8: On-device verification of gutter/bracket geometry
 - #23: Full Notepad++ localization port + language-file gap analysis
+- #28: On-device verification before removing redundant values-night/themes.xml overrides

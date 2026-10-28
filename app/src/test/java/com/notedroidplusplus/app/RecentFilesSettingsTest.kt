@@ -36,4 +36,25 @@ class RecentFilesSettingsTest {
         assertEquals("readme.md", RecentFilesSettings.label(e, RecentFilesSettings.DisplayMode.NAME_ONLY))
         assertEquals("content://x/y/readme.md", RecentFilesSettings.label(e, RecentFilesSettings.DisplayMode.FULL_PATH))
     }
+
+    @Test
+    fun resolveMax_acceptsSeekBarInt() {
+        assertEquals(25, RecentFilesSettings.resolveMax(25))
+        assertEquals(1, RecentFilesSettings.resolveMax(0))
+        assertEquals(100, RecentFilesSettings.resolveMax(500))
+    }
+
+    @Test
+    fun resolveMax_acceptsLegacyString() {
+        assertEquals(42, RecentFilesSettings.resolveMax("42"))
+        assertEquals(10, RecentFilesSettings.resolveMax("banana"))
+        assertEquals(1, RecentFilesSettings.resolveMax("-5"))
+    }
+
+    @Test
+    fun resolveMax_defaultsOnMissingOrUnexpected() {
+        assertEquals(10, RecentFilesSettings.resolveMax(null))
+        assertEquals(10, RecentFilesSettings.resolveMax(true))
+        assertEquals(10, RecentFilesSettings.resolveMax(3.5))
+    }
 }

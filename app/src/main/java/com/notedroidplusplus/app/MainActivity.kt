@@ -2715,7 +2715,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         }
     }
 
-    private val recentMax: Int get() = RecentFilesSettings.parseMax(prefs.getString("recent_max", null))
+    private val recentMax: Int get() = RecentFilesSettings.resolveMax(runCatching { prefs.all["recent_max"] }.getOrNull())
     private val recentMode: RecentFilesSettings.DisplayMode
         get() = if (prefs.getString("recent_display", "name") == "path") RecentFilesSettings.DisplayMode.FULL_PATH
         else RecentFilesSettings.DisplayMode.NAME_ONLY

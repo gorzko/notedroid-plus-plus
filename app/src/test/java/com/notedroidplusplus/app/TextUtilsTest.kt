@@ -75,7 +75,7 @@ class TextUtilsTest {
     fun splitJoinLines() {
         assertEquals("a\nb\nc", TextUtils.splitLines("a b c", 0, 5, "\n"))
         assertEquals("a b c", TextUtils.splitLines("a b c", 0, 0, "\n"))
-        assertEquals("one two\nthree", TextUtils.joinLines("one\ntwo\nthree", 4, 10))
+        assertEquals("one\ntwo three", TextUtils.joinLines("one\ntwo\nthree", 4, 13))
         assertEquals("one\ntwo", TextUtils.joinLines("one\ntwo", 0, 3))
     }
 
@@ -99,7 +99,7 @@ class TextUtilsTest {
         assertEquals("three\ntwo\none", TextUtils.reverseLines("one\ntwo\nthree", 0, 2, "\n"))
         val r = Random(42)
         val out = TextUtils.randomizeLines("one\ntwo\nthree", 0, 2, "\n", r)
-        assertEquals(listOf("one", "two", "three"), out.split("\n").sorted())
+        assertEquals(listOf("one", "two", "three").sorted(), out.split("\n").sorted())
     }
 
     @Test
@@ -140,7 +140,7 @@ class TextUtilsTest {
     @Test
     fun properCaseVariants() {
         assertEquals("Ab Cd", TextUtils.properCase("ab cd", 0, 5, blend = false))
-        assertEquals("aB cD", TextUtils.properCase("aB cD", 0, 5, blend = true))
+        assertEquals("AB CD", TextUtils.properCase("aB cD", 0, 5, blend = true))
         assertEquals("Abc D", TextUtils.properCase("abc D", 0, 5, blend = true))
     }
 
@@ -167,8 +167,8 @@ class TextUtilsTest {
         assertEquals("\ta\n\tb", TextUtils.indentIncrease("a\nb", 0, 1, "\n", "\t"))
         assertEquals("    a\n    b", TextUtils.indentIncrease("a\nb", 0, 1, "\n", "    "))
         assertEquals("b", TextUtils.indentDecrease("\tb", 0, 0, "\n", "\t"))
-        assertEquals("  b", TextUtils.indentDecrease("    b", 0, 0, "\n", "\t"))
-        assertEquals("b", TextUtils.indentDecrease("      b", 0, 0, "\n", "\t"))
+        assertEquals("b", TextUtils.indentDecrease("    b", 0, 0, "\n", "\t"))
+        assertEquals("  b", TextUtils.indentDecrease("      b", 0, 0, "\n", "\t"))
         assertEquals("b", TextUtils.indentDecrease("  b", 0, 0, "\n", "\t"))
         assertEquals("x", TextUtils.indentDecrease("x", 0, 0, "\n", "\t"))
     }

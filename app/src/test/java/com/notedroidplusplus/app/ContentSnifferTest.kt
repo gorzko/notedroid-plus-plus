@@ -121,4 +121,11 @@ class ContentSnifferTest {
     fun dotMDefaultsToMatlabWhenAmbiguous() {
         assertEquals(LanguageMode.MATLAB, ContentSniffer.detectWithFileName("notes.m", "x = 1;\n"))
     }
+
+    @Test
+    fun dotMImportAnyHeaderDetectsObjectiveC() {
+        val objc = "#import <stdio.h>\nint main() { return 0; }\n"
+        assertEquals(LanguageMode.OBJECTIVE_C, ContentSniffer.sniffDotM(objc))
+        assertEquals(LanguageMode.OBJECTIVE_C, ContentSniffer.detectWithFileName("main.m", objc))
+    }
 }

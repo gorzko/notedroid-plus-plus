@@ -30,7 +30,8 @@ data class UserDefinedLanguage(
         /** Characters never allowed in a UDL name (file-name safety + readability). */
         private val FORBIDDEN_NAME_CHARS = "/\\:?*\"<>|"
 
-        private fun sanitizeName(raw: String): String =
+        /** Sanitizes a UDL name: strips path/format characters and trims dots. */
+        fun sanitizeName(raw: String): String =
             raw.trim().filter { it !in FORBIDDEN_NAME_CHARS }.trim('.', ' ').take(MAX_NAME_LENGTH)
 
         /** Lowercases and strips path/dot characters from extensions. */
@@ -86,7 +87,8 @@ data class UserDefinedLanguage(
                     .map(::sanitizeDelimiters).filter { it.isNotEmpty() },
                 blockComment = blockComment,
                 stringDelimiters = field("stringDelimiters").asStrList()
-                    .flatMap { it.toList() }.filter { it.isLetterOrDigit().not() && it !in "\n\r" }
+                    .flatMap { it.toList() }
+                    .filter { it.isLetterOrDigit().not() && it !in "\n\r\t " }
                     .distinct(),
                 operators = field("operators").asStrSet()
                     .map(::sanitizeDelimiters).filter { it.isNotEmpty() }.toSet(),
@@ -133,6 +135,7 @@ data class UserDefinedLanguage(
         val n = text.length
         val lineCommentStarts = lineComments.sortedByDescending { it.length }
         val stringOps = stringDelimiters
+        val opsSorted = operators.filter { it.isNotEmpty() }.sortedByDescending { it.length }
 
         fun matchesAt(pos: Int, s: String): Boolean =
             text.regionMatches(pos, s, 0, s.length, ignoreCase = caseInsensitive)
@@ -183,9 +186,7 @@ data class UserDefinedLanguage(
                 i = end
                 continue
             }
-            val op = operators.filter { it.isNotEmpty() }
-                .sortedByDescending { it.length }
-                .firstOrNull { matchesAt(i, it) }
+            val op = opsSorted.firstOrNull { matchesAt(i, it) }
             if (op != null && !c.isLetterOrDigit()) {
                 tokens.add(SyntaxToken(i, i + op.length, TokenKind.OPERATOR))
                 i += op.length

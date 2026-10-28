@@ -368,6 +368,7 @@
     <string name="udl_prefix">UDL:</string>
     <string name="udl_define">Define User Language…</string>
     <string name="udl_edit">Edit User Language</string>
+    <string name="udl_apply">Apply to Current Document</string>
     <string name="udl_import">Import User Language…</string>
     <string name="udl_export">Export User Language…</string>
     <string name="udl_delete">Delete User Language…</string>

@@ -100,7 +100,7 @@ object ContentSniffer {
 
     private val OBJC_MARKER = Regex(
         "\\@interface\\b|\\@implementation\\b|\\@property\\b|\\@end\\b|\\@synthesize\\b|" +
-            "#\\s*import\\s+(<Foundation|\")",
+            "#\\s*import\\s*[<\"]",
         RegexOption.IGNORE_CASE
     )
     private val MATLAB_MARKER = Regex(

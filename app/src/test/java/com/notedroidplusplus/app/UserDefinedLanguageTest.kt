@@ -120,4 +120,23 @@ class UserDefinedLanguageTest {
         val store = UserDefinedLanguageStore(dir)
         assertTrue(store.list().isEmpty())
     }
+
+    @Test
+    fun spaceAndTabAreRejectedAsStringDelimiters() {
+        val udl = UserDefinedLanguage.fromJson(
+            "{\"name\": \"S\", \"stringDelimiters\": [\"+ -\\t_\"]}"
+        )
+        assertEquals(listOf('+', '-', '_'), udl.stringDelimiters)
+    }
+
+    @Test
+    fun sanitizedNamePreventsDiskCollisionBetweenAliases() {
+        val a = UserDefinedLanguage.fromJson("{\"name\": \"My/Lang\"}")
+        val b = UserDefinedLanguage.fromJson("{\"name\": \"My:Lang\"}")
+        assertEquals(a.name, b.name)
+        val store = UserDefinedLanguageStore(tmp.newFolder())
+        store.save(a)
+        store.save(b)
+        assertEquals(1, store.list().size)
+    }
 }

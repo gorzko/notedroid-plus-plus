@@ -111,7 +111,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
         val changeHistory: ChangeHistory = ChangeHistory(),
         var baselineText: String = "",
         var pinned: Boolean = false,
-        var udlName: String? = null
+        var udlName: String? = null,
+        var udlExplicit: Boolean = false
     )
 
     private val tabs = mutableListOf<TabSession>()
@@ -385,6 +386,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
             session.caret = st.caret
             session.bookmarks = st.bookmarks.toSet()
             session.pinned = st.pinned
+            session.udlName = st.udlName
+            session.udlExplicit = st.udlExplicit
         }
         sessionStore.clear()
         reorderPinnedToFront()
@@ -422,7 +425,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 s.document.modified,
                 s.caret,
                 s.bookmarks.toList(),
-                s.pinned
+                s.pinned,
+                s.udlName,
+                s.udlExplicit
             )
         })
     }
@@ -437,7 +442,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         super.onSaveInstanceState(outState)
         syncActiveDocument()
         activeSession()?.let { it.caret = editor.selectionStart }
-        val states = tabs.map { arrayOf(it.document.uri, it.document.fileName, it.document.text, it.document.language.name, it.document.encoding, it.document.lineEnding, it.document.modified, it.caret, it.readOnly, ArrayList(it.bookmarks), it.textDirectionRtl, it.pinned) }
+        val states = tabs.map { arrayOf(it.document.uri, it.document.fileName, it.document.text, it.document.language.name, it.document.encoding, it.document.lineEnding, it.document.modified, it.caret, it.readOnly, ArrayList(it.bookmarks), it.textDirectionRtl, it.pinned, it.udlName, it.udlExplicit) }
         outState.putSerializable(KEY_TABS, ArrayList(states))
         outState.putInt(KEY_ACTIVE, active)
     }
@@ -462,6 +467,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
             session.bookmarks = (arr[9] as? ArrayList<Int>)?.toSet() ?: emptySet()
             session.textDirectionRtl = arr[10] as? Boolean ?: false
             session.pinned = arr[11] as? Boolean ?: false
+            session.udlName = arr[12] as? String
+            session.udlExplicit = arr[13] as? Boolean ?: false
         }
         reorderPinnedToFront()
         rebuildTabLayout()
@@ -781,6 +788,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             editor.language = language
             val reuseUdl = udlForFileName(fileName)
             current.udlName = reuseUdl?.name
+            current.udlExplicit = false
             editor.udl = reuseUdl
             editor.setSelection(0)
             editor.addTextChangedListener(tw)
@@ -796,6 +804,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             hasBom = loaded.hadBom
         )
         session.udlName = udlForFileName(fileName)?.name
+        session.udlExplicit = false
         session.udlName?.let { editor.udl = udlStore.findByName(it) }
         return session
     }
@@ -1062,6 +1071,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 language = ContentSniffer.detectWithFileName(files.displayName(uri), editor.text.toString()),
                 hasBom = s.document.hasBom
             )
+            // C2: re-evaluate the UDL against the new extension on Save As.
+            // An explicitly picked UDL survives; an auto-applied one is re-resolved
+            // (kept if it still claims the new extension, cleared otherwise).
+            if (s.udlExplicit) {
+                editor.udl = s.udlName?.let { udlStore.findByName(it) }
+            } else {
+                val resolved = udlForFileName(s.document.fileName)
+                s.udlName = resolved?.name
+                editor.udl = resolved
+            }
             editor.language = s.document.language
             refreshTabLabels()
             updateStatus()
@@ -1762,6 +1781,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         activeSession()?.let {
             it.document = it.document.copy(language = mode)
             it.udlName = null
+            it.udlExplicit = false
             editor.udl = null
             editor.language = mode
             updateStatus()
@@ -1771,6 +1791,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun setUdl(udl: UserDefinedLanguage) {
         val s = activeSession() ?: return
         s.udlName = udl.name
+        s.udlExplicit = true
         editor.udl = udl
         updateStatus()
     }
@@ -1818,6 +1839,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 udlStore.delete(name)
                 if (activeSession()?.udlName?.equals(name, ignoreCase = true) == true) {
                     activeSession()!!.udlName = null
+                    activeSession()!!.udlExplicit = false
                     editor.udl = null
                     updateStatus()
                 }
@@ -1861,7 +1883,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .setTitle(if (existing == null) R.string.udl_define else R.string.udl_edit)
             .setView(container)
             .setPositiveButton(R.string.ok) { _, _ ->
-                val name = nameF.text.toString().trim()
+                val name = UserDefinedLanguage.sanitizeName(nameF.text.toString())
                 if (name.isEmpty()) {
                     Toast.makeText(this, R.string.udl_name_required, Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
@@ -1876,7 +1898,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
                     blockComment = blockOpenF.text.toString().takeIf { it.isNotBlank() }?.let { o ->
                         blockCloseF.text.toString().takeIf { it.isNotBlank() }?.let { c -> o to c }
                     },
-                    stringDelimiters = stringsF.text.toString().filter { it.isLetterOrDigit().not() && it !in "\n\r" }.toList().distinct(),
+                    stringDelimiters = stringsF.text.toString()
+                        .filter { it.isLetterOrDigit().not() && it !in "\n\r\t " }.toList().distinct(),
                     operators = opsF.text.toString().split(Regex("\\s+")).filter { it.isNotBlank() }.toSet(),
                     caseInsensitive = ciChk.isChecked
                 )
@@ -2942,8 +2965,12 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun showLanguagesMenu() = popup {
         val udlList = udlStore.list()
         if (udlList.isNotEmpty()) {
-            udlList.forEach { u -> item("${getString(R.string.udl_prefix)} ${u.name}") { setUdl(u) } }
             menu.add(getString(R.string.udl_section)).isEnabled = false
+            udlList.forEach { u ->
+                val sub = menu.addSubMenu(getString(R.string.udl_prefix) + " " + u.name)
+                sub.add(getString(R.string.udl_apply)).setOnMenuItemClickListener { setUdl(u); true }
+                sub.add(getString(R.string.udl_edit)).setOnMenuItemClickListener { showUdlDefineDialog(u); true }
+            }
         }
         LanguageMode.entries.forEach { m -> item(m.displayName) { setLanguage(m) } }
         item(getString(R.string.udl_define)) { showUdlDefineDialog(null) }

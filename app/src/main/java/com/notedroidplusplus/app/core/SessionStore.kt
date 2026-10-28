@@ -27,7 +27,9 @@ class SessionStore(private val context: Context) {
                     "modified" to Json.Value.Bool(tab.modified),
                     "caret" to Json.Value.Num(tab.caret.toString()),
                     "bookmarks" to Json.Value.Arr(tab.bookmarks.map { Json.Value.Num(it.toString()) }),
-                    "pinned" to Json.Value.Bool(tab.pinned)
+                    "pinned" to Json.Value.Bool(tab.pinned),
+                    "udlName" to Json.Value.Str(tab.udlName ?: ""),
+                    "udlExplicit" to Json.Value.Bool(tab.udlExplicit)
                 )
             )
         })
@@ -54,7 +56,9 @@ class SessionStore(private val context: Context) {
                     modified = bool("modified"),
                     caret = num("caret"),
                     bookmarks = (obj.entries.firstOrNull { it.first == "bookmarks" }?.second as? Json.Value.Arr)?.items?.mapNotNull { (it as? Json.Value.Num)?.raw?.toIntOrNull() } ?: emptyList(),
-                    pinned = bool("pinned")
+                    pinned = bool("pinned"),
+                    udlName = str("udlName").ifBlank { null },
+                    udlExplicit = bool("udlExplicit")
                 )
             }
         }.getOrNull()
@@ -74,6 +78,8 @@ class SessionStore(private val context: Context) {
         val modified: Boolean,
         val caret: Int,
         val bookmarks: List<Int> = emptyList(),
-        val pinned: Boolean = false
+        val pinned: Boolean = false,
+        val udlName: String? = null,
+        val udlExplicit: Boolean = false
     )
 }

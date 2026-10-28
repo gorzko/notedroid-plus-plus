@@ -22,7 +22,15 @@ icon, dark theme, back/forward gesture support).
 - Pinch-to-zoom in the editor (persisted with the font-size setting)
 - Go-to-line
 - Undo/Redo (200 steps, per-tab stacks), cut/copy/paste/select all
-- UPPERCASE / lowercase / Title Case / tOGGLE cASE, trim trailing whitespace
+- UPPERCASE / lowercase / Title Case / tOGGLE cASE, Proper Case (+blend), Sentence case
+  (+blend), iNVERT cASE, ranDOm CasE; Blank Operations (trim leading/trailing/both,
+  EOL to space, TAB↔space); Line Operations (duplicate, split/join lines, remove empty
+  lines, move line up/down, reverse/randomize, sort asc/desc + numeric/case-insensitive,
+  remove duplicates); Insert Date Time (short/long/custom pattern, persisted);
+  Copy to Clipboard (filename/full path/directory); Increase/Decrease Line Indent
+- File menu: Save All (untitled tabs go through Save As), Reload from disk (with
+  dirty-buffer confirmation), Print (Android PrintManager), per-tab Read-Only toggle
+  (input blocked, status-bar indicator)
 - Encoding detection & conversion (UTF-8, UTF-16LE/BE, ASCII, ISO-8859-1, CP-1252);
   BOM detection is preserved on save
 - EOL conversion: Windows (CRLF), Unix (LF), Mac (CR)

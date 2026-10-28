@@ -108,6 +108,260 @@ object TextUtils {
     fun trimTrailingWhitespace(text: String): String =
         normalize(text).split("\n").joinToString("\n") { it.trimEnd() }
 
+    // ---- Notepad++ Edit > Line Operations ----
+
+    /** Zero-based inclusive first/last line index covered by a selection (empty selection = current line). */
+    fun lineSpanForSelection(text: String, selStart: Int, selEnd: Int): Pair<Int, Int> {
+        val s = selStart.coerceIn(0, text.length)
+        val e = selEnd.coerceIn(0, text.length)
+        val first = text.substring(0, s).count { it == '\n' }
+        val last = text.substring(0, e).count { it == '\n' }
+        return first to maxOf(first, last)
+    }
+
+    private fun lineRange(text: String, first: Int, last: Int): List<String> {
+        val lines = normalize(text).split("\n")
+        val f = first.coerceIn(0, lines.size - 1)
+        val l = last.coerceIn(f, lines.size - 1)
+        return lines.subList(f, l + 1)
+    }
+
+    private fun rebuild(text: String, first: Int, last: Int, eol: String, replacement: List<String>): String {
+        val lines = normalize(text).split("\n")
+        val f = first.coerceIn(0, lines.size - 1)
+        val l = last.coerceIn(f, lines.size - 1)
+        return (lines.subList(0, f) + replacement + lines.subList(l + 1, lines.size)).joinToString(eol)
+    }
+
+    fun duplicateLines(text: String, first: Int, last: Int, eol: String): String {
+        val range = lineRange(text, first, last)
+        return rebuild(text, first, last, eol, range + range)
+    }
+
+    /** Notepad++ Split Lines: insert an EOL at each space in the selected span (word boundaries). */
+    fun splitLines(text: String, selStart: Int, selEnd: Int, eol: String): String {
+        if (selEnd <= selStart) return text
+        val seg = text.substring(selStart, selEnd)
+        val replaced = normalize(seg).replace(" ", eol)
+        return text.substring(0, selStart) + replaced + text.substring(selEnd)
+    }
+
+    /** Notepad++ Join Lines: requires a multi-line selection; EOLs become a single space. */
+    fun joinLines(text: String, selStart: Int, selEnd: Int): String {
+        if (selEnd <= selStart) return text
+        val seg = text.substring(selStart, selEnd)
+        if (!seg.contains('\n') && !seg.contains('\r')) return text
+        val replaced = normalize(seg).replace('\n', ' ')
+        return text.substring(0, selStart) + replaced + text.substring(selEnd)
+    }
+
+    fun removeEmptyLines(text: String, first: Int, last: Int, eol: String, includingBlank: Boolean): String {
+        val kept = lineRange(text, first, last).filterNot { if (includingBlank) it.isBlank() else it.isEmpty() }
+        return rebuild(text, first, last, eol, kept)
+    }
+
+    fun moveLineUp(text: String, line: Int, eol: String): String {
+        if (line <= 0) return text
+        val upper = lineRange(text, line - 1, line - 1)
+        val moved = lineRange(text, line, line)
+        return rebuild(text, line - 1, line, eol, moved + upper)
+    }
+
+    fun moveLineDown(text: String, line: Int, eol: String): String {
+        val lines = normalize(text).split("\n")
+        if (line < 0 || line >= lines.size - 1) return text
+        val moved = lineRange(text, line, line)
+        val lower = lineRange(text, line + 1, line + 1)
+        return rebuild(text, line, line + 1, eol, lower + moved)
+    }
+
+    fun reverseLines(text: String, first: Int, last: Int, eol: String): String =
+        rebuild(text, first, last, eol, lineRange(text, first, last).reversed())
+
+    fun randomizeLines(text: String, first: Int, last: Int, eol: String, random: java.util.Random): String =
+        rebuild(text, first, last, eol, lineRange(text, first, last).shuffled(random))
+
+    fun sortLines(text: String, first: Int, last: Int, eol: String, descending: Boolean, numeric: Boolean, ignoreCase: Boolean): String {
+        val sorted = if (numeric) {
+            lineRange(text, first, last).sortedBy { it.trim().toDoubleOrNull() ?: Double.NEGATIVE_INFINITY }
+        } else {
+            lineRange(text, first, last).let { lines ->
+                if (ignoreCase) lines.sortedBy { it.lowercase() } else lines.sorted()
+            }
+        }
+        return rebuild(text, first, last, eol, if (descending) sorted.reversed() else sorted)
+    }
+
+    /** Keeps the first instance of each line; consecutiveOnly dedupes adjacent repeats. */
+    fun removeDuplicateLines(text: String, first: Int, last: Int, eol: String, consecutiveOnly: Boolean): String {
+        val lines = lineRange(text, first, last)
+        val kept = if (consecutiveOnly) {
+            lines.fold(mutableListOf<String>()) { acc, l -> if (acc.isNotEmpty() && acc.last() == l) acc else { acc.add(l); acc } }
+        } else {
+            val seen = mutableSetOf<String>()
+            lines.filter { seen.add(it) }
+        }
+        return rebuild(text, first, last, eol, kept)
+    }
+
+    // ---- Notepad++ Edit > Blank Operations ----
+
+    private fun perLine(text: String, eol: String, transform: (String) -> String): String =
+        normalize(text).split("\n").joinToString(eol) { transform(it) }
+
+    fun trimLeadingWhitespace(text: String, eol: String): String = perLine(text, eol) { it.trimStart() }
+
+    fun trimLeadingAndTrailing(text: String, eol: String): String = perLine(text, eol) { it.trim() }
+
+    fun eolToSpace(text: String): String = normalize(text).replace('\n', ' ')
+
+    fun tabToSpace(text: String, eol: String, tabWidth: Int): String {
+        require(tabWidth >= 1)
+        return perLine(text, eol) { line ->
+            buildString {
+                for (ch in line) {
+                    if (ch == '\t') repeat(tabWidth) { append(' ') } else append(ch)
+                }
+            }
+        }
+    }
+
+    /** Replaces leading runs of spaces (of tabWidth size) with tabs; all=false keeps interior spaces. */
+    fun spaceToTab(text: String, eol: String, tabWidth: Int, all: Boolean): String {
+        require(tabWidth >= 1)
+        return perLine(text, eol) { line ->
+            val indentEnd = line.indexOfFirst { !it.isWhitespace() }.let { if (it < 0) line.length else it }
+            val indent = line.substring(0, indentEnd)
+            val body = line.substring(indentEnd)
+            val tabbedIndent = buildString {
+                var spaces = 0
+                for (ch in indent) {
+                    if (ch == ' ') {
+                        spaces++
+                        if (spaces == tabWidth) { append('\t'); spaces = 0 }
+                    } else {
+                        repeat(spaces) { append(' ') }
+                        spaces = 0
+                        append(ch)
+                    }
+                }
+                repeat(spaces) { append(' ') }
+            }
+            if (all) tabbedIndent + buildString {
+                var spaces = 0
+                for (ch in body) {
+                    if (ch == ' ') {
+                        spaces++
+                        if (spaces == tabWidth) { append('\t'); spaces = 0 }
+                    } else {
+                        repeat(spaces) { append(' ') }
+                        spaces = 0
+                        append(ch)
+                    }
+                }
+                repeat(spaces) { append(' ') }
+            } else tabbedIndent + body
+        }
+    }
+
+    // ---- Notepad++ Edit > Convert Case to (extended) ----
+
+    /** Capitalizes letters that follow non-letters; blend=true keeps other letters' case. */
+    fun properCase(text: String, start: Int, end: Int, blend: Boolean): String {
+        val source = text.substring(start, end)
+        val base = if (blend) source else source.lowercase()
+        val sb = StringBuilder(source.length)
+        var capitalizeNext = true
+        for (ch in base) {
+            if (ch.isLetter()) {
+                sb.append(if (capitalizeNext) ch.uppercaseChar() else ch)
+                capitalizeNext = false
+            } else {
+                sb.append(ch)
+                capitalizeNext = true
+            }
+        }
+        return text.substring(0, start) + sb + text.substring(end)
+    }
+
+    /** Capitalizes the first letter of each sentence; blend=true keeps other letters' case. */
+    fun sentenceCase(text: String, start: Int, end: Int, blend: Boolean): String {
+        val source = text.substring(start, end)
+        val base = if (blend) source else source.lowercase()
+        val sb = StringBuilder(source.length)
+        var capitalizeNext = true
+        for (ch in base) {
+            if (ch.isLetter()) {
+                sb.append(if (capitalizeNext) ch.uppercaseChar() else ch)
+                if (capitalizeNext) capitalizeNext = false
+            } else {
+                sb.append(ch)
+                if (ch == '.' || ch == '!' || ch == '?') capitalizeNext = true
+            }
+        }
+        return text.substring(0, start) + sb + text.substring(end)
+    }
+
+    /** iNVERT cASE: swaps the case of letters only (leaves non-letters untouched). */
+    fun invertCase(text: String, start: Int, end: Int): String {
+        val seg = StringBuilder()
+        for (ch in text.substring(start, end)) {
+            seg.append(
+                when {
+                    ch.isUpperCase() -> ch.lowercaseChar()
+                    ch.isLowerCase() -> ch.uppercaseChar()
+                    else -> ch
+                }
+            )
+        }
+        return text.substring(0, start) + seg + text.substring(end)
+    }
+
+    /** ranDOm cASE: randomizes the case of each letter. */
+    fun randomCase(text: String, start: Int, end: Int, random: java.util.Random): String {
+        val seg = StringBuilder()
+        for (ch in text.substring(start, end)) {
+            seg.append(if (ch.isLetter() && random.nextBoolean()) ch.uppercaseChar() else ch.lowercaseChar())
+        }
+        return text.substring(0, start) + seg + text.substring(end)
+    }
+
+    // ---- Notepad++ Edit > Indent ----
+
+    /** Inserts indentUnit at the start of each line in the span. */
+    fun indentIncrease(text: String, first: Int, last: Int, eol: String, indentUnit: String): String {
+        if (indentUnit.isEmpty()) return text
+        return rebuild(text, first, last, eol, lineRange(text, first, last).map { indentUnit + it })
+    }
+
+    /** Removes one indentUnit (or up to its space-equivalent) from each line in the span. */
+    fun indentDecrease(text: String, first: Int, last: Int, eol: String, indentUnit: String): String {
+        val spaceEquivalent = if (indentUnit == "\t") 4 else indentUnit.length
+        return rebuild(text, first, last, eol, lineRange(text, first, last).map { line ->
+            when {
+                line.startsWith(indentUnit) -> line.removePrefix(indentUnit)
+                line.startsWith(" ") -> line.dropWhile { it == ' ' }.let { it ->
+                    val leading = line.length - it.length
+                    line.drop(minOf(leading, spaceEquivalent))
+                }
+                else -> line
+            }
+        })
+    }
+
+    // ---- Notepad++ Edit > Insert > Date Time ----
+
+    const val DATETIME_SHORT = "h:mm a M/d/yyyy"
+    const val DATETIME_LONG = "h:mm a EEEE, MMMM d, yyyy"
+
+    fun formatDateTime(pattern: String, millis: Long): String =
+        try {
+            java.time.format.DateTimeFormatter.ofPattern(pattern)
+                .format(java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()))
+        } catch (e: Exception) {
+            ""
+        }
+
     fun countMatches(text: String, needle: String, ignoreCase: Boolean, wholeWord: Boolean): Int {
         if (needle.isEmpty()) return 0
         var count = 0

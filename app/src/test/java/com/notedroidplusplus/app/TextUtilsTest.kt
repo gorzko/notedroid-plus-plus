@@ -3,6 +3,7 @@ package com.notedroidplusplus.app
 import com.notedroidplusplus.app.core.TextUtils
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.util.Random
 
 class TextUtilsTest {
 
@@ -50,5 +51,140 @@ class TextUtilsTest {
         val bytes = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte(), 'a'.code.toByte())
         assertEquals("UTF-8", TextUtils.detect(bytes).name())
         assertEquals("UTF-16LE", TextUtils.detect(byteArrayOf(0xFF.toByte(), 0xFE.toByte(), 0x41, 0)).name())
+    }
+
+    // ---- Line operations (#34) ----
+
+    private val doc = "one\ntwo\nthree\nfour"
+
+    @Test
+    fun lineSpanForSelection() {
+        assertEquals(1 to 2, TextUtils.lineSpanForSelection(doc, 4, 11))
+        assertEquals(1 to 1, TextUtils.lineSpanForSelection(doc, 5, 5))
+        assertEquals(0 to 3, TextUtils.lineSpanForSelection(doc, 0, doc.length))
+    }
+
+    @Test
+    fun duplicateLines() {
+        assertEquals("one\ntwo\ntwo\nthree\nfour", TextUtils.duplicateLines(doc, 1, 1, "\n"))
+        assertEquals("one\ntwo\nthree\ntwo\nthree\nfour", TextUtils.duplicateLines(doc, 1, 2, "\n"))
+        assertEquals("one\r\ntwo\r\ntwo\r\nthree", TextUtils.duplicateLines("one\r\ntwo\r\nthree", 1, 1, "\r\n"))
+    }
+
+    @Test
+    fun splitJoinLines() {
+        assertEquals("a\nb\nc", TextUtils.splitLines("a b c", 0, 5, "\n"))
+        assertEquals("a b c", TextUtils.splitLines("a b c", 0, 0, "\n"))
+        assertEquals("one two\nthree", TextUtils.joinLines("one\ntwo\nthree", 4, 10))
+        assertEquals("one\ntwo", TextUtils.joinLines("one\ntwo", 0, 3))
+    }
+
+    @Test
+    fun removeEmptyLines() {
+        assertEquals("a\nc", TextUtils.removeEmptyLines("a\n\nc", 0, 2, "\n", includingBlank = false))
+        assertEquals("a\nc", TextUtils.removeEmptyLines("a\n \nc", 0, 2, "\n", includingBlank = true))
+        assertEquals("a\n \nc", TextUtils.removeEmptyLines("a\n \nc", 0, 2, "\n", includingBlank = false))
+    }
+
+    @Test
+    fun moveLines() {
+        assertEquals("two\none\nthree\nfour", TextUtils.moveLineUp(doc, 1, "\n"))
+        assertEquals("one", TextUtils.moveLineUp("one", 0, "\n"))
+        assertEquals("one\nthree\ntwo\nfour", TextUtils.moveLineDown(doc, 1, "\n"))
+        assertEquals("one\ntwo\nthree", TextUtils.moveLineDown("one\ntwo\nthree", 2, "\n"))
+    }
+
+    @Test
+    fun reverseAndRandomizeLines() {
+        assertEquals("three\ntwo\none", TextUtils.reverseLines("one\ntwo\nthree", 0, 2, "\n"))
+        val r = Random(42)
+        val out = TextUtils.randomizeLines("one\ntwo\nthree", 0, 2, "\n", r)
+        assertEquals(listOf("one", "two", "three"), out.split("\n").sorted())
+    }
+
+    @Test
+    fun sortLinesVariants() {
+        assertEquals("a\nb\nc", TextUtils.sortLines("c\na\nb", 0, 2, "\n", descending = false, numeric = false, ignoreCase = false))
+        assertEquals("c\nb\na", TextUtils.sortLines("c\na\nb", 0, 2, "\n", descending = true, numeric = false, ignoreCase = false))
+        assertEquals("2\n10\n30", TextUtils.sortLines("10\n30\n2", 0, 2, "\n", descending = false, numeric = true, ignoreCase = false))
+        assertEquals("a\nB\nc", TextUtils.sortLines("c\nB\na", 0, 2, "\n", descending = false, numeric = false, ignoreCase = true))
+    }
+
+    @Test
+    fun removeDuplicateLinesVariants() {
+        assertEquals("a\nb\nc", TextUtils.removeDuplicateLines("a\nb\na\nc", 0, 3, "\n", consecutiveOnly = false))
+        assertEquals("a\nb\na", TextUtils.removeDuplicateLines("a\nb\nb\na", 0, 3, "\n", consecutiveOnly = true))
+    }
+
+    // ---- Blank operations (#35) ----
+
+    @Test
+    fun blankOperations() {
+        assertEquals("a \nb", TextUtils.trimLeadingWhitespace(" a \nb", "\n"))
+        assertEquals("a\nb", TextUtils.trimLeadingAndTrailing(" a \nb ", "\n"))
+        assertEquals("a b", TextUtils.eolToSpace("a\nb"))
+        assertEquals("a    b", TextUtils.tabToSpace("a\tb", "\n", 4))
+        assertEquals("    a\nb", TextUtils.tabToSpace("\ta\nb", "\n", 4))
+    }
+
+    @Test
+    fun spaceToTabVariants() {
+        assertEquals("\ta", TextUtils.spaceToTab("    a", "\n", 4, all = false))
+        assertEquals("a\tb", TextUtils.spaceToTab("a    b", "\n", 4, all = true))
+        assertEquals("a    b", TextUtils.spaceToTab("a    b", "\n", 4, all = false))
+        assertEquals("  a", TextUtils.spaceToTab("  a", "\n", 4, all = false))
+    }
+
+    // ---- Extended case conversions (#35) ----
+
+    @Test
+    fun properCaseVariants() {
+        assertEquals("Ab Cd", TextUtils.properCase("ab cd", 0, 5, blend = false))
+        assertEquals("aB cD", TextUtils.properCase("aB cD", 0, 5, blend = true))
+        assertEquals("Abc D", TextUtils.properCase("abc D", 0, 5, blend = true))
+    }
+
+    @Test
+    fun sentenceCaseVariants() {
+        assertEquals("Ab cd. Ef", TextUtils.sentenceCase("ab cd. ef", 0, 9, blend = false))
+        assertEquals("AB cD. EF", TextUtils.sentenceCase("aB cD. eF", 0, 9, blend = true))
+    }
+
+    @Test
+    fun invertAndRandomCase() {
+        assertEquals("iNVERT cASE ok", TextUtils.invertCase("Invert Case OK", 0, 14))
+        assertEquals("123-456", TextUtils.invertCase("123-456", 0, 7))
+        val r = Random(7)
+        val out = TextUtils.randomCase("abcd", 0, 4, r)
+        assertEquals("abcd", out.lowercase())
+        assertEquals(4, out.length)
+    }
+
+    // ---- Indent (#36) ----
+
+    @Test
+    fun indentOperations() {
+        assertEquals("\ta\n\tb", TextUtils.indentIncrease("a\nb", 0, 1, "\n", "\t"))
+        assertEquals("    a\n    b", TextUtils.indentIncrease("a\nb", 0, 1, "\n", "    "))
+        assertEquals("b", TextUtils.indentDecrease("\tb", 0, 0, "\n", "\t"))
+        assertEquals("  b", TextUtils.indentDecrease("    b", 0, 0, "\n", "\t"))
+        assertEquals("b", TextUtils.indentDecrease("      b", 0, 0, "\n", "\t"))
+        assertEquals("b", TextUtils.indentDecrease("  b", 0, 0, "\n", "\t"))
+        assertEquals("x", TextUtils.indentDecrease("x", 0, 0, "\n", "\t"))
+    }
+
+    // ---- Date/time formatting (#36) ----
+
+    @Test
+    fun dateTimeFormatting() {
+        val millis = java.time.ZonedDateTime.of(2026, 3, 14, 9, 5, 0, 0, java.time.ZoneId.systemDefault())
+            .toInstant().toEpochMilli()
+        val short = TextUtils.formatDateTime(TextUtils.DATETIME_SHORT, millis)
+        assertEquals(true, short.contains("2026"))
+        assertEquals(true, short.contains("3/14/2026"))
+        val long = TextUtils.formatDateTime(TextUtils.DATETIME_LONG, millis)
+        assertEquals(true, long.contains("March"))
+        assertEquals("2026-03-14 09:05:00", TextUtils.formatDateTime("yyyy-MM-dd HH:mm:ss", millis))
+        assertEquals("", TextUtils.formatDateTime("bad pattern {{{", millis))
     }
 }

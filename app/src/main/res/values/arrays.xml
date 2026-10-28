@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="language_display_names">
+        <item>System default</item>
+        <item>English</item>
+        <item>Chinese (Simplified)</item>
+        <item>Chinese (Traditional)</item>
+        <item>German</item>
+        <item>French</item>
+        <item>Spanish</item>
+        <item>Italian</item>
+        <item>Japanese</item>
+        <item>Korean</item>
+        <item>Polish</item>
+        <item>Portuguese (Brazil)</item>
+        <item>Russian</item>
+        <item>Turkish</item>
+        <item>Dutch</item>
+        <item>Swedish</item>
+        <item>Hungarian</item>
+        <item>Arabic</item>
+        <item>Hebrew</item>
+        <item>Greek</item>
+        <item>Czech</item>
+        <item>Danish</item>
+        <item>Finnish</item>
+        <item>Norwegian</item>
+        <item>Slovak</item>
+        <item>Thai</item>
+        <item>Ukrainian</item>
+        <item>Vietnamese</item>
+    </string-array>
+    <string-array name="language_tags">
+        <item></item>
+        <item>en</item>
+        <item>zh-CN</item>
+        <item>zh-TW</item>
+        <item>de</item>
+        <item>fr</item>
+        <item>es</item>
+        <item>it</item>
+        <item>ja</item>
+        <item>ko</item>
+        <item>pl</item>
+        <item>pt-BR</item>
+        <item>ru</item>
+        <item>tr</item>
+        <item>nl</item>
+        <item>sv</item>
+        <item>hu</item>
+        <item>ar</item>
+        <item>he</item>
+        <item>el</item>
+        <item>cs</item>
+        <item>da</item>
+        <item>fi</item>
+        <item>nb</item>
+        <item>sk</item>
+        <item>th</item>
+        <item>uk</item>
+        <item>vi</item>
+    </string-array>
+    <string-array name="theme_names">
+        <item>Default</item>
+        <item>Bespoke</item>
+        <item>Black board</item>
+        <item>Choco</item>
+        <item>Deep Black</item>
+        <item>khaki</item>
+        <item>Mono Industrial</item>
+        <item>MossyLawn</item>
+        <item>Navajo</item>
+        <item>Plastic Code Wrap</item>
+        <item>Rybicki</item>
+        <item>Solarized</item>
+        <item>Twilight</item>
+        <item>Vibrant Black</item>
+        <item>Zenburn</item>
+    </string-array>
+</resources>

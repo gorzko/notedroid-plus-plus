@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NoteDroid++</string>
+    <string name="tab_new">novo %1$d</string>
+    <string name="menu_file">Arquivo</string>
+    <string name="menu_edit">Editar</string>
+    <string name="menu_search">Pesquisar</string>
+    <string name="menu_view">Exibir</string>
+    <string name="menu_encoding">Codificação</string>
+    <string name="menu_languages">Linguagens</string>
+    <string name="menu_settings">Configurações</string>
+    <string name="menu_tools">Ferramentas</string>
+    <string name="menu_plugins">Plugins</string>
+    <string name="action_new">Novo</string>
+    <string name="action_open">Abrir…</string>
+    <string name="action_save">Salvar</string>
+    <string name="action_save_as">Salvar como…</string>
+    <string name="action_close">Fechar</string>
+    <string name="action_exit">Sair</string>
+    <string name="action_undo">Desfazer</string>
+    <string name="action_redo">Refazer</string>
+    <string name="action_cut">Cortar</string>
+    <string name="action_copy">Copiar</string>
+    <string name="action_paste">Colar</string>
+    <string name="action_select_all">Selecionar tudo</string>
+    <string name="action_find">Localizar…</string>
+    <string name="action_replace">Substituir…</string>
+    <string name="action_goto">Ir para linha…</string>
+    <string name="action_prettify">Pretty Print (Prettify)</string>
+    <string name="action_minify">Minificar</string>
+    <string name="action_preview">Pré-visualizar</string>
+    <string name="find_what">Localizar</string>
+    <string name="replace_with">Substituir por</string>
+    <string name="btn_find_next">Localizar próxima</string>
+    <string name="btn_find_prev">Localizar anterior</string>
+    <string name="btn_replace">Substituir</string>
+    <string name="btn_replace_all">Substituir tudo</string>
+    <string name="btn_close">Fechar</string>
+    <string name="match_case">Diferenciar maiúsculas</string>
+    <string name="match_whole_word">Palavra inteira</string>
+    <string name="use_regex">Expressão regular</string>
+    <string name="wrap_around">Circular</string>
+    <string name="yes">Sim</string>
+    <string name="no">Não</string>
+    <string name="cancel">Cancelar</string>
+</resources>

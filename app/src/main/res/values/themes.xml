@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.NoteDroidPlusPlus" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.NoteDroidPlusPlus" parent="Theme.Material3.Light.NoActionBar">
         <item name="colorPrimary">@color/npp_blue</item>
         <item name="colorPrimaryDark">@color/npp_blue_dark</item>
         <item name="colorSecondary">@color/npp_orange</item>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NoteDroid++</string>
+    <string name="tab_new">nouveau %1$d</string>
+    <string name="menu_file">Fichier</string>
+    <string name="menu_edit">Édition</string>
+    <string name="menu_search">Rechercher</string>
+    <string name="menu_view">Affichage</string>
+    <string name="menu_encoding">Encodage</string>
+    <string name="menu_languages">Langages</string>
+    <string name="menu_settings">Paramètres</string>
+    <string name="menu_tools">Outils</string>
+    <string name="menu_plugins">Extensions</string>
+    <string name="action_new">Nouveau</string>
+    <string name="action_open">Ouvrir…</string>
+    <string name="action_save">Enregistrer</string>
+    <string name="action_save_as">Enregistrer sous…</string>
+    <string name="action_close">Fermer</string>
+    <string name="action_exit">Quitter</string>
+    <string name="action_undo">Annuler</string>
+    <string name="action_redo">Rétablir</string>
+    <string name="action_cut">Couper</string>
+    <string name="action_copy">Copier</string>
+    <string name="action_paste">Coller</string>
+    <string name="action_select_all">Tout sélectionner</string>
+    <string name="action_find">Rechercher…</string>
+    <string name="action_replace">Remplacer…</string>
+    <string name="action_goto">Aller à la ligne…</string>
+    <string name="action_prettify">Pretty Print (Prettify)</string>
+    <string name="action_minify">Minifier</string>
+    <string name="action_preview">Aperçu</string>
+    <string name="find_what">Rechercher</string>
+    <string name="replace_with">Remplacer par</string>
+    <string name="btn_find_next">Suivant</string>
+    <string name="btn_find_prev">Précédent</string>
+    <string name="btn_replace">Remplacer</string>
+    <string name="btn_replace_all">Tout remplacer</string>
+    <string name="btn_close">Fermer</string>
+    <string name="match_case">Respecter la casse</string>
+    <string name="match_whole_word">Mot entier</string>
+    <string name="use_regex">Expression régulière</string>
+    <string name="wrap_around">Boucler</string>
+    <string name="yes">Oui</string>
+    <string name="no">Non</string>
+    <string name="cancel">Annuler</string>
+</resources>

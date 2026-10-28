@@ -19,7 +19,6 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
 import com.google.android.material.tabs.TabLayout
 import com.notedroidplusplus.app.core.Document
 import com.notedroidplusplus.app.core.FileManager
@@ -28,18 +27,21 @@ import com.notedroidplusplus.app.core.SessionStore
 import com.notedroidplusplus.app.core.TextUtils
 import com.notedroidplusplus.app.databinding.ActivityMainBinding
 import com.notedroidplusplus.app.editing.CodeEditText
+import com.notedroidplusplus.app.editing.ContentSniffer
+import com.notedroidplusplus.app.editing.MarkdownActions
 import com.notedroidplusplus.app.files.FindInFilesActivity
 import com.notedroidplusplus.app.plugins.PluginHost
 import com.notedroidplusplus.app.plugins.PluginImportActivity
 import com.notedroidplusplus.app.plugins.PluginRegistry
 import com.notedroidplusplus.app.search.SearchHit
 import com.notedroidplusplus.app.search.findAll
-import com.notedroidplusplus.app.preview.PreviewActivity
+import com.notedroidplusplus.app.preview.PreviewView
 import com.notedroidplusplus.app.search.FindOptions
 import com.notedroidplusplus.app.search.findNext
 import com.notedroidplusplus.app.search.findPrev
 import com.notedroidplusplus.app.search.replaceAll
 import com.notedroidplusplus.app.settings.SettingsActivity
+import com.notedroidplusplus.app.settings.ThemeRegistry
 import com.notedroidplusplus.app.tools.JsonTool
 import com.notedroidplusplus.app.tools.XmlTool
 import java.nio.charset.Charset
@@ -47,7 +49,6 @@ import java.nio.charset.Charset
 class MainActivity : AppCompatActivity(), PluginHost {
 
     companion object {
-        private const val MAX_UNDO = 200
         private const val KEY_TABS = "tabs_state"
         private const val KEY_ACTIVE = "active_tab"
     }
@@ -65,8 +66,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     data class TabSession(
         var document: Document,
         var tab: TabLayout.Tab?,
-        val undoStack: ArrayDeque<String> = ArrayDeque(),
-        val redoStack: ArrayDeque<String> = ArrayDeque(),
+        val history: com.notedroidplusplus.app.core.UndoHistory = com.notedroidplusplus.app.core.UndoHistory(),
         var caret: Int = 0
     )
 
@@ -134,12 +134,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 )
             }
             val loaded = files.load(uri)
-            val session = addTab(uri, loaded.text)
-            session.document = session.document.copy(
-                encoding = loaded.charset.name(),
-                lineEnding = loaded.lineEnding,
-                hasBom = loaded.hadBom
-            )
+            val fileName = files.displayName(uri)
+            val session = loadIntoTab(uri, loaded, fileName, ContentSniffer.detectWithFileName(fileName, loaded.text))
             val offset = TextUtils.lineIndexToOffset(session.document.text, (line - 1).coerceAtLeast(0))
             session.caret = offset
             editor.setSelection(offset.coerceAtMost(session.document.text.length))
@@ -201,6 +197,18 @@ class MainActivity : AppCompatActivity(), PluginHost {
         binding.btnFind.setOnClickListener { toggleFindPanel(false) }
         binding.btnPreview.setOnClickListener { preview() }
         binding.btnPrettify.setOnClickListener { prettify() }
+        binding.mdBold.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.bold(t, s, e) } }
+        binding.mdItalic.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.italic(t, s, e) } }
+        binding.mdStrike.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.strike(t, s, e) } }
+        binding.mdCode.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.inlineCode(t, s, e) } }
+        binding.mdH1.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.heading(t, s, e, 1) } }
+        binding.mdH2.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.heading(t, s, e, 2) } }
+        binding.mdH3.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.heading(t, s, e, 3) } }
+        binding.mdBulletList.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.list(t, s, e, ordered = false) } }
+        binding.mdNumberedList.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.list(t, s, e, ordered = true) } }
+        binding.mdLink.setOnClickListener { promptLink() }
+        binding.mdCodeBlock.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.codeBlock(t, s, e) } }
+        binding.mdTable.setOnClickListener { applyMarkdown { t, s, e -> MarkdownActions.table(t, s) } }
         binding.btnFindNext.setOnClickListener { findNextMatch(down = true) }
         binding.btnFindPrev.setOnClickListener { findNextMatch(down = false) }
         binding.btnFindClose.setOnClickListener { binding.findPanel.visibility = View.GONE; findPanelOpen = false }
@@ -334,10 +342,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun applyPersistedSettings() {
-        val dark = prefs.getBoolean("dark_theme", false)
-        AppCompatDelegate.setDefaultNightMode(
-            if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
-        )
+        applyTheme(ThemeRegistry.byName(prefs.getString("theme_name", "Default") ?: "Default"))
         editor.showLineNumbers = prefs.getBoolean("show_line_numbers", true)
         editor.setHorizontallyScrolling(!prefs.getBoolean("wrap_lines", false))
         val fontSize = prefs.getInt("font_size", 14)
@@ -346,12 +351,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     override fun onResume() {
         super.onResume()
+        applyTheme(ThemeRegistry.byName(prefs.getString("theme_name", "Default") ?: "Default"))
         editor.showLineNumbers = prefs.getBoolean("show_line_numbers", true)
         editor.setHorizontallyScrolling(!prefs.getBoolean("wrap_lines", false))
         val fontSize = prefs.getInt("font_size", 14)
         editor.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat().coerceIn(8f, 40f))
-        editor.applyTheme(resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
-                android.content.res.Configuration.UI_MODE_NIGHT_YES)
     }
 
     // ---- PluginHost ----
@@ -375,36 +379,71 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun setEditorText(text: String) {
         val s = activeSession() ?: return
-        pushUndo(s)
+        val before = editor.text?.toString() ?: ""
         editor.removeTextChangedListener(tw)
         editor.setText(text)
         editor.setSelection(text.length)
         editor.addTextChangedListener(tw)
+        if (before != text) {
+            pushWholeTextChange(s, before, text)
+        }
         s.document = s.document.copy(text = text, modified = true)
         refreshTabLabels()
         updateStatus()
     }
 
-    private fun pushUndo(s: TabSession) {
-        val snapshot = editor.text?.toString() ?: return
-        s.undoStack.addLast(snapshot)
-        if (s.undoStack.size > MAX_UNDO) s.undoStack.removeFirst()
-        s.redoStack.clear()
+    /** Record a whole-buffer replacement as one undo step built from a minimal insert/delete pair. */
+    private fun pushWholeTextChange(s: TabSession, before: String, after: String) {
+        var prefix = 0
+        val maxPrefix = minOf(before.length, after.length)
+        while (prefix < maxPrefix && before[prefix] == after[prefix]) prefix++
+        var suffix = 0
+        val maxSuffix = minOf(before.length, after.length) - prefix
+        while (suffix < maxSuffix && before[before.length - 1 - suffix] == after[after.length - 1 - suffix]) suffix++
+        val delStart = prefix
+        val delEnd = before.length - suffix
+        val insStart = prefix
+        val insEnd = after.length - suffix
+        val deleted = if (delEnd > delStart) before.substring(delStart, delEnd) else ""
+        val inserted = if (insEnd > insStart) after.substring(insStart, insEnd) else ""
+        val edits = buildList {
+            if (deleted.isNotEmpty()) add(com.notedroidplusplus.app.core.UndoHistory.Edit.Delete(delStart, deleted))
+            if (inserted.isNotEmpty()) add(com.notedroidplusplus.app.core.UndoHistory.Edit.Insert(insStart, inserted))
+        }
+        if (edits.isNotEmpty()) s.history.pushCompound(edits)
     }
 
-    // ---- Text watcher (records per-tab undo) ----
+    // ---- Text watcher (records per-tab edit-range undo) ----
 
     private val tw = object : android.text.TextWatcher {
-        private var last: String = ""
-        override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) { last = s?.toString() ?: "" }
-        override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-        override fun afterTextChanged(s: android.text.Editable?) {
-            val sess = activeSession()
-            if (sess != null && last != s?.toString()) {
-                sess.undoStack.addLast(last)
-                if (sess.undoStack.size > MAX_UNDO) sess.undoStack.removeFirst()
-                sess.redoStack.clear()
+        private var pendingStart = -1
+        private var pendingRemoved: String? = null
+
+        override fun beforeTextChanged(s: CharSequence?, start: Int, beforeCount: Int, afterCount: Int) {
+            pendingRemoved = if (beforeCount > 0) {
+                s?.subSequence(start, start + beforeCount)?.toString()
+            } else null
+            pendingStart = start
+        }
+
+        override fun onTextChanged(s: CharSequence?, start: Int, beforeCount: Int, count: Int) {
+            val sess = activeSession() ?: return
+            val removed = if (beforeCount > 0) pendingRemoved.takeIf { it != null } ?: "" else ""
+            val inserted = if (count > 0) s?.subSequence(start, start + count)?.toString() ?: "" else ""
+            when {
+                removed.isNotEmpty() && inserted.isEmpty() -> sess.history.pushDelete(start, removed)
+                inserted.isNotEmpty() && removed.isEmpty() -> sess.history.pushInsert(start, inserted)
+                removed.isNotEmpty() && inserted.isNotEmpty() -> sess.history.pushCompound(
+                    buildList {
+                        add(com.notedroidplusplus.app.core.UndoHistory.Edit.Delete(start, removed))
+                        add(com.notedroidplusplus.app.core.UndoHistory.Edit.Insert(start, inserted))
+                    }
+                )
             }
+            pendingRemoved = null
+            pendingStart = -1
+        }
+        override fun afterTextChanged(s: android.text.Editable?) {
             onTextChanged()
         }
     }
@@ -445,13 +484,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 )
             }
             val loaded = files.load(uri)
-            val session = addTab(uri, loaded.text)
-            session.document = session.document.copy(
-                encoding = loaded.charset.name(),
-                lineEnding = loaded.lineEnding,
-                hasBom = loaded.hadBom
-            )
-            recentFiles.add(uri.toString(), session.document.fileName)
+            val fileName = files.displayName(uri)
+            loadIntoTab(uri, loaded, fileName, ContentSniffer.detectWithFileName(fileName, loaded.text))
+            recentFiles.add(uri.toString(), fileName)
             refreshTabLabels()
             updateStatus()
         } catch (e: Exception) {
@@ -459,8 +494,53 @@ class MainActivity : AppCompatActivity(), PluginHost {
         }
     }
 
+    /**
+     * Notepad++ behavior: opening a file while the active tab is an unmodified
+     * empty document replaces that document in-place; otherwise a new tab is
+     * created. The tab is always labeled with the file name.
+     */
+    private fun loadIntoTab(
+        uri: Uri,
+        loaded: FileManager.LoadedFile,
+        fileName: String,
+        language: LanguageMode
+    ): TabSession {
+        val current = activeSession()
+        val reuse = current != null && current.document.uri == null &&
+            !current.document.modified && current.document.text.isEmpty()
+        if (reuse) {
+            current!!.document = current.document.copy(
+                uri = uri.toString(),
+                fileName = fileName,
+                text = loaded.text,
+                language = language,
+                encoding = loaded.charset.name(),
+                lineEnding = loaded.lineEnding,
+                hasBom = loaded.hadBom,
+                modified = false
+            )
+            editor.removeTextChangedListener(tw)
+            editor.setText(loaded.text)
+            editor.language = language
+            editor.setSelection(0)
+            editor.addTextChangedListener(tw)
+            refreshTabLabels()
+            return current
+        }
+        val session = addTab(uri, loaded.text)
+        session.document = session.document.copy(
+            fileName = fileName,
+            language = language,
+            encoding = loaded.charset.name(),
+            lineEnding = loaded.lineEnding,
+            hasBom = loaded.hadBom
+        )
+        return session
+    }
+
     private fun activateTab(index: Int) {
         if (index < 0 || index >= tabs.size) return
+        if (previewMode != null) closePreview()
         activeSession()?.let { it.caret = editor.selectionStart }
         syncActiveDocument()
         active = index
@@ -518,6 +598,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
             else -> "Unix (LF)"
         }
         binding.statusLanguage.text = s?.document?.language?.displayName ?: ""
+        val md = s?.document?.language == LanguageMode.MARKDOWN && previewMode == null
+        binding.markdownToolbar.visibility = if (md) View.VISIBLE else View.GONE
     }
 
     // ---- Save / Close ----
@@ -744,9 +826,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun performUndo() {
         val s = activeSession() ?: return
-        if (s.undoStack.isEmpty()) return
-        val prev = s.undoStack.removeLast()
-        s.redoStack.addLast(editor.text?.toString() ?: "")
+        val current = editor.text?.toString() ?: return
+        val prev = s.history.undo(current) ?: return
         editor.removeTextChangedListener(tw)
         editor.setText(prev)
         editor.setSelection(prev.length)
@@ -758,9 +839,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun performRedo() {
         val s = activeSession() ?: return
-        if (s.redoStack.isEmpty()) return
-        val next = s.redoStack.removeLast()
-        s.undoStack.addLast(editor.text?.toString() ?: "")
+        val current = editor.text?.toString() ?: return
+        val next = s.history.redo(current) ?: return
         editor.removeTextChangedListener(tw)
         editor.setText(next)
         editor.setSelection(next.length)
@@ -794,13 +874,77 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .onFailure { Toast.makeText(this, errorRes, Toast.LENGTH_SHORT).show() }
     }
 
+    private var previewMode: PreviewView.Mode? = null
+    private var previewView: PreviewView? = null
+
     private fun preview() {
-        val s = activeSession() ?: return
-        when (s.document.language) {
-            LanguageMode.MARKDOWN -> PreviewActivity.start(this, PreviewActivity.Mode.MARKDOWN, editor.text?.toString() ?: "")
-            LanguageMode.HTML -> PreviewActivity.start(this, PreviewActivity.Mode.HTML, editor.text?.toString() ?: "")
-            else -> Toast.makeText(this, R.string.tool_preview_only, Toast.LENGTH_SHORT).show()
+        if (previewMode != null) {
+            closePreview()
+            return
         }
+        val s = activeSession() ?: return
+        syncActiveDocument()
+        val content = s.document.text
+        val mode = PreviewView.modeFor(
+            content,
+            s.document.language == LanguageMode.MARKDOWN,
+            s.document.language == LanguageMode.HTML
+        )
+        if (mode == null) {
+            Toast.makeText(this, R.string.tool_preview_only, Toast.LENGTH_SHORT).show()
+            return
+        }
+        openPreview(mode, content)
+    }
+
+    private fun openPreview(mode: PreviewView.Mode, content: String) {
+        val container = binding.previewContainer
+        val v = previewView ?: PreviewView(this).also { previewView = it }
+        if (v.parent == null) container.addView(
+            v,
+            android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        v.render(content, mode)
+        previewMode = mode
+        container.visibility = View.VISIBLE
+        binding.editor.visibility = View.GONE
+    }
+
+    private fun closePreview() {
+        previewView?.close()
+        binding.previewContainer.visibility = View.GONE
+        binding.editor.visibility = View.VISIBLE
+        previewMode = null
+    }
+
+    private fun applyMarkdown(op: (String, Int, Int) -> MarkdownActions.Result) {
+        if (previewMode != null) return
+        val text = editor.text?.toString() ?: return
+        val s = editor.selectionStart.coerceAtLeast(0)
+        val e = editor.selectionEnd.coerceAtLeast(s)
+        val r = op(text, s, e)
+        if (r.text == text) return
+        editor.text?.replace(0, text.length, r.text)
+        editor.setSelection(r.newStart.coerceIn(0, r.text.length), r.newEnd.coerceIn(0, r.text.length))
+    }
+
+    private fun promptLink() {
+        if (previewMode != null) return
+        val input = EditText(this).apply {
+            hint = getString(R.string.md_link_url_hint)
+            inputType = android.text.InputType.TYPE_TEXT_VARIATION_URI
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.md_link_prompt)
+            .setView(input)
+            .setPositiveButton(R.string.md_link_ok) { _, _ ->
+                applyMarkdown { t, s, e -> MarkdownActions.link(t, s, e, input.text.toString()) }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun transformCase(op: (String, Int, Int) -> String) {
@@ -955,12 +1099,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
         val uri = Uri.parse(uriString)
         try {
             val loaded = files.load(uri)
-            val session = addTab(uri, loaded.text)
-            session.document = session.document.copy(
-                encoding = loaded.charset.name(),
-                lineEnding = loaded.lineEnding,
-                hasBom = loaded.hadBom
-            )
+            val fileName = files.displayName(uri)
+            loadIntoTab(uri, loaded, fileName, ContentSniffer.detectWithFileName(fileName, loaded.text))
             refreshTabLabels()
             updateStatus()
         } catch (e: Exception) {
@@ -970,8 +1110,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun showViewMenu() = popup {
-        item(getString(R.string.theme_light)) { setDarkTheme(false) }
-        item(getString(R.string.theme_dark)) { setDarkTheme(true) }
+        item(getString(R.string.theme_picker)) { showThemeMenu() }
         item(getString(R.string.wrap_lines)) { setWrap(true) }
         item(getString(R.string.no_wrap_lines)) { setWrap(false) }
         item(getString(R.string.show_line_numbers)) { editor.showLineNumbers = !editor.showLineNumbers }
@@ -979,17 +1118,37 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.action_zoom_out)) { zoom(0.8f) }
     }
 
+    private fun showThemeMenu() {
+        popup {
+            ThemeRegistry.all.forEach { theme ->
+                item(theme.name) {
+                    applyThemeName(theme.name)
+                }
+            }
+        }
+    }
+
+    private fun applyThemeName(name: String) {
+        prefs.edit().putString("theme_name", name).apply()
+        applyTheme(ThemeRegistry.byName(name))
+    }
+
     private fun setWrap(wrap: Boolean) {
         prefs.edit().putBoolean("wrap_lines", wrap).apply()
         editor.setHorizontallyScrolling(!wrap)
     }
 
-    private fun setDarkTheme(dark: Boolean) {
-        prefs.edit().putBoolean("dark_theme", dark).apply()
-        AppCompatDelegate.setDefaultNightMode(
-            if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
-        )
-        editor.applyTheme(dark)
+    private fun applyTheme(theme: com.notedroidplusplus.app.settings.EditorTheme) {
+        binding.root.setBackgroundColor(theme.appBg)
+        binding.toolbar.setBackgroundColor(theme.toolbarBg)
+        binding.toolbar.setTitleTextColor(0xFFFFFFFF.toInt())
+        binding.tabLayout.setBackgroundColor(theme.tabBg)
+        binding.tabLayout.setTabTextColors(theme.tabText, theme.tabSelectedText)
+        binding.tabLayout.setSelectedTabIndicatorColor(theme.tabIndicator)
+        binding.statusBar.setBackgroundColor(theme.statusBg)
+        val statusViews = listOf(binding.statusPosition, binding.statusSelection, binding.statusEncoding, binding.statusEol, binding.statusLanguage)
+        statusViews.forEach { it.setTextColor(theme.statusText) }
+        editor.applyEditorTheme(theme)
     }
 
     private fun showEncodingMenu() = popup {

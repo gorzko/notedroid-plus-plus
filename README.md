@@ -31,11 +31,29 @@ icon, dark theme, back/forward gesture support).
 - Hardened XML processing (DOCTYPE/external entities disabled — XXE-safe)
 - Sandboxed preview: JS off, file/content access off, network loads blocked
 - Languages menu, per-tab language override, file-extension auto-detection
-- Light/Dark theme (persisted), wrap lines, zoom in/out, functional settings screen
+- Themes: Notepad++ default plus 14 named desktop themes (Bespoke, Black board,
+  Choco, Deep Black, khaki, Mono Industrial, MossyLawn, Navajo, Plastic Code Wrap,
+  Rybicki, Solarized, Twilight, Vibrant Black, Zenburn) applied to chrome + syntax;
+  selection persists (Settings or View → Theme)
+- App language selection (27 Notepad++ locales + system default) via per-app
+  locales, persisted and applied without changing the system language
+- Wrap lines, zoom in/out, functional settings screen
 
 **New built-in features**
-- **Preview** for Markdown and HTML (sandboxed WebView, JavaScript disabled)
-- **Prettify / Minify** for JSON and XML (validation included)
+- **In-tab preview** for Markdown and HTML: a document view mode toggled from
+  the toolbar, rendered in a sandboxed WebView (JavaScript disabled, file/content
+  access off, network loads blocked); the mode is chosen from the content, so a
+  .md file previews even if the language selector says otherwise
+- **Markdown toolbar** (bold, italic, strikethrough, code, headings, lists,
+  links, code blocks, tables) with pure, unit-tested text transforms and full
+  undo support
+- **Prettify / Minify** for JSON and XML (validation included); JSON numbers
+  keep full precision (integers beyond 2^53 survive round-trips)
+- **Content-based language detection**: files without a known extension are
+  sniffed (shebang, DOCTYPE, JSON/YAML/INI structure, Markdown markers, SQL)
+  from a bounded 8 KB prefix; extension detection stays the default
+- **Edit-based undo**: contiguous typing and backspace runs coalesce into
+  single steps (per-tab, capped at 200) instead of whole-document snapshots
 
 **Plugin support**
 - v1 plugin API (`PluginHost`, `PluginCommand`, `PluginDescriptor`)
@@ -47,6 +65,14 @@ icon, dark theme, back/forward gesture support).
 - Save As picks the encoding first (UTF-8/UTF-16/…), matching the Notepad++
   "Convert to" flow; MIME derived from the file extension
 - Tools → Validate XML reports well-formedness with error details
+
+**Cloud storage (Google Drive / OneDrive)**
+- NoteDroid++ uses the Android Storage Access Framework for all file access.
+  On devices with the Google Drive or OneDrive app installed, their documents
+  providers appear directly in the system picker: File → Open browses and
+  opens files from Drive/OneDrive, Save/Save As writes back through the same
+  grant. This is the deliberate least-privilege path — zero app permissions,
+  no OAuth credentials stored, no SDK dependency; the OS brokers access.
 
 ## Building
 

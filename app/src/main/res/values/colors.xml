@@ -7,43 +7,11 @@
 
     <color name="app_bg_light">#F0F0F0</color>
     <color name="app_bg_dark">#1E1E1E</color>
-    <color name="editor_bg_light">#FFFFFF</color>
-    <color name="editor_bg_dark">#262626</color>
 
-    <color name="text_primary_light">#101010</color>
     <color name="text_primary_dark">#E0E0E0</color>
 
     <color name="tab_bg_light">#E0E0E0</color>
     <color name="tab_bg_dark">#2D2D2D</color>
     <color name="tab_text">#444444</color>
 
-    <color name="syn_keyword">#0000FF</color>
-    <color name="syn_keyword_dark">#56A8F5</color>
-    <color name="syn_type">#2B91AF</color>
-    <color name="syn_type_dark">#4EC9B0</color>
-    <color name="syn_number">#FF8000</color>
-    <color name="syn_number_dark">#F28B54</color>
-    <color name="syn_string">#008000</color>
-    <color name="syn_string_dark">#D69D85</color>
-    <color name="syn_comment">#008000</color>
-    <color name="syn_comment_dark">#57A64A</color>
-    <color name="syn_operator">#000080</color>
-    <color name="syn_operator_dark">#9CDCFE</color>
-    <color name="syn_preproc">#8000FF</color>
-    <color name="syn_preproc_dark">#C586C0</color>
-    <color name="syn_tag">#0000FF</color>
-    <color name="syn_tag_dark">#569CD6</color>
-    <color name="syn_attr">#FF0000</color>
-    <color name="syn_attr_dark">#9CDCFE</color>
-    <color name="syn_value">#800000</color>
-    <color name="syn_value_dark">#CE9178</color>
-    <color name="syn_heading">#000080</color>
-    <color name="syn_heading_dark">#569CD6</color>
-    <color name="syn_link">#0000FF</color>
-    <color name="syn_link_dark">#4FC1FF</color>
-    <color name="syn_escape">#804000</color>
-    <color name="syn_escape_dark">#B5CEA8</color>
-
-    <color name="find_highlight_light">#FFE89C</color>
-    <color name="find_highlight_dark">#5A5A00</color>
 </resources>

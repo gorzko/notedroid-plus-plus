@@ -25,7 +25,7 @@ class SessionStore(private val context: Context) {
                     "encoding" to Json.Value.Str(tab.encoding),
                     "lineEnding" to Json.Value.Str(tab.lineEnding),
                     "modified" to Json.Value.Bool(tab.modified),
-                    "caret" to Json.Value.Num(tab.caret.toDouble())
+                    "caret" to Json.Value.Num(tab.caret.toString())
                 )
             )
         })
@@ -41,7 +41,7 @@ class SessionStore(private val context: Context) {
                 val obj = v as? Json.Value.Obj ?: return@mapNotNull null
                 fun str(key: String) = (obj.entries.firstOrNull { it.first == key }?.second as? Json.Value.Str)?.s ?: ""
                 fun bool(key: String) = (obj.entries.firstOrNull { it.first == key }?.second as? Json.Value.Bool)?.b ?: false
-                fun num(key: String) = ((obj.entries.firstOrNull { it.first == key }?.second as? Json.Value.Num)?.n ?: 0.0).toInt()
+                fun num(key: String) = ((obj.entries.firstOrNull { it.first == key }?.second as? Json.Value.Num)?.raw?.toIntOrNull() ?: 0)
                 TabState(
                     uri = str("uri").ifBlank { null },
                     name = str("name"),

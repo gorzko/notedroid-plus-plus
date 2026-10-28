@@ -48,13 +48,10 @@
     <string name="goto_line">Go to line (1–%1$d)</string>
     <string name="line_col">Ln %1$d, Col %2$d</string>
     <string name="sel">Sel %1$d</string>
-    <string name="theme_light">Light theme</string>
-    <string name="theme_dark">Dark theme</string>
     <string name="wrap_lines">Wrap lines</string>
     <string name="no_wrap_lines">No wrap (horizontal scroll)</string>
     <string name="show_line_numbers">Show line numbers</string>
     <string name="plugins_title">Plugins</string>
-    <string name="plugins_empty">No plugins installed.</string>
     <string name="plugin_error">Plugin error: %1$s</string>
     <string name="eol_title">EOL Conversion</string>
     <string name="windows_format">Windows (CRLF)</string>
@@ -71,8 +68,6 @@
     <string name="error_load_failed">Could not open file: %1$s</string>
     <string name="replaced_occurrences">Replaced %1$d occurrence(s)</string>
     <string name="toast_no_match">No match found</string>
-    <string name="preview_html">HTML preview</string>
-    <string name="preview_markdown">Markdown preview</string>
     <string name="tool_json_xml_only">Prettify/Minify applies to JSON and XML files</string>
     <string name="tool_preview_only">Preview supports Markdown and HTML</string>
     <string name="action_zoom_in">Zoom In</string>
@@ -94,4 +89,22 @@
     <string name="encoding_title">Choose encoding</string>
     <string name="tabs_kept_dirty">%1$d tab(s) with unsaved changes were kept</string>
     <string name="action_zoom_out">Zoom Out</string>
+    <string name="md_bold">Bold</string>
+    <string name="md_italic">Italic</string>
+    <string name="md_strike">Strikethrough</string>
+    <string name="md_code">Code</string>
+    <string name="md_h1">H1</string>
+    <string name="md_h2">H2</string>
+    <string name="md_h3">H3</string>
+    <string name="md_bullet_list">Bullet list</string>
+    <string name="md_numbered_list">Numbered list</string>
+    <string name="md_link">Link</string>
+    <string name="md_code_block">Code block</string>
+    <string name="md_table">Table</string>
+    <string name="md_link_url_hint">https://example.com</string>
+    <string name="md_link_prompt">Link URL</string>
+    <string name="md_link_ok">Insert</string>
+    <string name="theme_picker">Theme…</string>
+    <string name="pref_theme">Editor theme</string>
+    <string name="pref_language">App language</string>
 </resources>

@@ -12,6 +12,7 @@ import android.view.Gravity
 import androidx.appcompat.widget.AppCompatEditText
 import com.notedroidplusplus.app.LanguageMode
 import com.notedroidplusplus.app.TokenKind
+import com.notedroidplusplus.app.settings.EditorTheme
 
 /**
  * Editor view with Notepad++-style features: gutter with line numbers, syntax
@@ -71,32 +72,15 @@ class CodeEditText @JvmOverloads constructor(
         post { updateGutter() }
     }
 
-    fun applyTheme(dark: Boolean) {
-        darkTheme = dark
-        val res = resources
-        fun c(name: String): Int =
-            res.getIdentifier(name, "color", context.packageName).let { if (it != 0) res.getColor(it) else 0xFF000000.toInt() }
-        colors = mapOf(
-            TokenKind.KEYWORD to c(if (dark) "syn_keyword_dark" else "syn_keyword"),
-            TokenKind.TYPE to c(if (dark) "syn_type_dark" else "syn_type"),
-            TokenKind.NUMBER to c(if (dark) "syn_number_dark" else "syn_number"),
-            TokenKind.STRING to c(if (dark) "syn_string_dark" else "syn_string"),
-            TokenKind.COMMENT to c(if (dark) "syn_comment_dark" else "syn_comment"),
-            TokenKind.OPERATOR to c(if (dark) "syn_operator_dark" else "syn_operator"),
-            TokenKind.PREPROCESSOR to c(if (dark) "syn_preproc_dark" else "syn_preproc"),
-            TokenKind.TAG to c(if (dark) "syn_tag_dark" else "syn_tag"),
-            TokenKind.ATTRIBUTE to c(if (dark) "syn_attr_dark" else "syn_attr"),
-            TokenKind.VALUE to c(if (dark) "syn_value_dark" else "syn_value"),
-            TokenKind.HEADING to c(if (dark) "syn_heading_dark" else "syn_heading"),
-            TokenKind.LINK to c(if (dark) "syn_link_dark" else "syn_link"),
-            TokenKind.ESCAPE to c(if (dark) "syn_escape_dark" else "syn_escape"),
-        )
-        gutterTextColor = if (dark) 0xFF8A8A8A.toInt() else 0xFF6E6E6E.toInt()
-        gutterBgColor = if (dark) 0xFF1F1F1F.toInt() else 0xFFEBEBEB.toInt()
-        highlightColor = if (dark) 0xFF2A2A40.toInt() else 0xFFE8E8FF.toInt()
-        bracketColor = if (dark) 0xFFAAAAAA.toInt() else 0xFF808080.toInt()
-        setBackgroundColor(if (dark) 0xFF262626.toInt() else 0xFFFFFFFF.toInt())
-        setTextColor(if (dark) 0xFFE0E0E0.toInt() else 0xFF101010.toInt())
+    fun applyEditorTheme(theme: EditorTheme) {
+        darkTheme = theme.dark
+        colors = theme.syntax
+        gutterTextColor = theme.gutterText
+        gutterBgColor = theme.gutterBg
+        highlightColor = theme.currentLine
+        bracketColor = theme.bracket
+        setBackgroundColor(theme.editorBg)
+        setTextColor(theme.editorText)
         gutterPaint.textSize = paint.textSize * 0.85f
         updateGutter()
         rehighlight()

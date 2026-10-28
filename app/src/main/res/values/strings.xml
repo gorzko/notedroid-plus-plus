@@ -388,7 +388,7 @@
     <string name="udl_field_line_comments">Line comment delimiters (space-separated)</string>
     <string name="udl_field_block_open">Block comment open</string>
     <string name="udl_field_block_close">Block comment close</string>
-    <string name="udl_field_strings">String delimiters (e.g. \" or ')</string>
+    <string name="udl_field_strings">String delimiters (e.g. quotation mark or apostrophe)</string>
     <string name="udl_field_operators">Operators (space-separated)</string>
     <string name="udl_field_case_insensitive">Case insensitive</string>
 </resources>

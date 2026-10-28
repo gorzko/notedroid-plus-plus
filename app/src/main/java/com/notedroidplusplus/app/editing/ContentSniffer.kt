@@ -147,7 +147,15 @@ object ContentSniffer {
         return section && kv >= 1 || kv >= 2
     }
 
-    private fun markdownScore(lines: List<String>): Int {
+    private fun markdownScore(lines: List<String>): Int = markdownMarkerScore(lines)
+
+    /**
+     * Shared Markdown marker detection: scores headings, fenced code, links,
+     * list markers, blockquotes and setext rules over a bounded line list.
+     * Used both by [detect] and by the preview/toolbar content sniffing so
+     * every surface agrees on what counts as a Markdown document.
+     */
+    fun markdownMarkerScore(lines: List<String>): Int {
         var score = 0
         var scanned = 0
         for (line in lines) {

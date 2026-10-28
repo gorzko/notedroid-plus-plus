@@ -136,9 +136,7 @@ object ContentSniffer {
             if (t.isEmpty() || t.startsWith("#")) continue
             if (t.startsWith("<") || t.startsWith("{") || t.startsWith("[") || t.endsWith(";")) return false
             total++
-            if (Regex("^[A-Za-z_][\\w.-]*\\s*:(\\s|$)").containsMatchIn(t) ||
-                Regex("^-\\s+\\S").containsMatchIn(t)
-            ) kv++
+            if (Regex("^[A-Za-z_][\\w.-]*\\s*:(\\s|$)").containsMatchIn(t)) kv++
         }
         return total >= 2 && kv >= 2 && kv >= total / 2
     }

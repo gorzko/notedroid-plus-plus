@@ -89,7 +89,8 @@ class FileManager(private val io: FileIo) {
                     context.contentResolver.query(uri, null, null, null, null)?.use { c ->
                         val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
                         if (idx >= 0 && c.moveToFirst() && !c.isNull(idx)) {
-                            c.getString(idx)?.let { return it }
+                            val name = c.getString(idx)
+                            if (!name.isNullOrBlank()) return name
                         }
                     }
                 }

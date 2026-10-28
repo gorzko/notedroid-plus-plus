@@ -49,7 +49,7 @@ icon, dark theme, back/forward gesture support).
 
 **Notepad++ parity batch (settings, tools, panels)**
 - Recent Files History settings (max entries, name/full-path display, clear)
-- Find in Files filters (glob includes, `!` file excludes, `!\\dir` / `!+\\dir`
+- Find in Files filters (glob includes, `!` file excludes, `!\dir` / `!+\dir`
   directory exclusions), In-all-sub-folders toggle, open-buffer priority
 - Tools: MD5/SHA-1/SHA-256/SHA-512 hashing (text dialog, SAF files, selection
   to clipboard) and a Character Panel (ASCII grid + HTML entities + U+XXXX

@@ -74,7 +74,7 @@ object MarkdownRenderer {
         r = Regex("`([^`]+)`").replace(r) { "<code>${it.groupValues[1]}</code>" }
         r = Regex("\\*\\*([^*]+)\\*\\*").replace(r) { "<b>${it.groupValues[1]}</b>" }
         r = Regex("\\*([^*]+)\\*").replace(r) { "<i>${it.groupValues[1]}</i>" }
-        r = Regex("\\[([^]]+)]\\(([^)]+)\\)").replace(r) { m ->
+        r = Regex("\\[([^]]+)]\\(([^()]*(?:\\([^()]*\\)[^()]*)*)\\)").replace(r) { m ->
             val url = sanitizeUrl(m.groupValues[2])
             if (url != null) "<a href=\"" + url + "\">" + m.groupValues[1] + "</a>" else m.groupValues[1]
         }

@@ -59,6 +59,7 @@ class MarkdownRendererTest {
             assertTrue("scheme $scheme must not survive", !html.contains("${scheme}:"))
             assertTrue("link must degrade to plain label text", html.contains("<p>x"))
             assertTrue("no anchor tag for rejected scheme", !html.contains("<a href"))
+            assertTrue("no stray close paren may leak as text", !html.contains("x)"))
         }
     }
 

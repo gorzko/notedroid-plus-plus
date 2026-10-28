@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NoteDroid++</string>
+    <string name="tab_new">nowy %1$d</string>
+    <string name="menu_file">Plik</string>
+    <string name="menu_edit">Edycja</string>
+    <string name="menu_search">Szukaj</string>
+    <string name="menu_view">Widok</string>
+    <string name="menu_encoding">Kodowanie</string>
+    <string name="menu_languages">Języki</string>
+    <string name="menu_settings">Ustawienia</string>
+    <string name="menu_tools">Narzędzia</string>
+    <string name="menu_plugins">Wtyczki</string>
+    <string name="action_new">Nowy</string>
+    <string name="action_open">Otwórz…</string>
+    <string name="action_save">Zapisz</string>
+    <string name="action_save_as">Zapisz jako…</string>
+    <string name="action_close">Zamknij</string>
+    <string name="action_exit">Zakończ</string>
+    <string name="action_undo">Cofnij</string>
+    <string name="action_redo">Ponów</string>
+    <string name="action_cut">Wytnij</string>
+    <string name="action_copy">Kopiuj</string>
+    <string name="action_paste">Wklej</string>
+    <string name="action_select_all">Zaznacz wszystko</string>
+    <string name="action_find">Znajdź…</string>
+    <string name="action_replace">Zamień…</string>
+    <string name="action_goto">Przejdź do linii…</string>
+    <string name="action_prettify">Pretty Print (Prettify)</string>
+    <string name="action_minify">Minimalizuj</string>
+    <string name="action_preview">Podgląd</string>
+    <string name="find_what">Znajdź</string>
+    <string name="replace_with">Zamień na</string>
+    <string name="btn_find_next">Znajdź następne</string>
+    <string name="btn_find_prev">Znajdź poprzednie</string>
+    <string name="btn_replace">Zamień</string>
+    <string name="btn_replace_all">Zamień wszystko</string>
+    <string name="btn_close">Zamknij</string>
+    <string name="match_case">Rozróżniaj wielkość liter</string>
+    <string name="match_whole_word">Całe słowo</string>
+    <string name="use_regex">Wyrażenie regularne</string>
+    <string name="wrap_around">Zawijaj</string>
+    <string name="yes">Tak</string>
+    <string name="no">Nie</string>
+    <string name="cancel">Anuluj</string>
+</resources>

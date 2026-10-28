@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NoteDroid++</string>
+    <string name="tab_new">новый %1$d</string>
+    <string name="menu_file">Файл</string>
+    <string name="menu_edit">Правка</string>
+    <string name="menu_search">Поиск</string>
+    <string name="menu_view">Вид</string>
+    <string name="menu_encoding">Кодировка</string>
+    <string name="menu_languages">Языки</string>
+    <string name="menu_settings">Настройки</string>
+    <string name="menu_tools">Инструменты</string>
+    <string name="menu_plugins">Плагины</string>
+    <string name="action_new">Новый</string>
+    <string name="action_open">Открыть…</string>
+    <string name="action_save">Сохранить</string>
+    <string name="action_save_as">Сохранить как…</string>
+    <string name="action_close">Закрыть</string>
+    <string name="action_exit">Выход</string>
+    <string name="action_undo">Отменить</string>
+    <string name="action_redo">Повторить</string>
+    <string name="action_cut">Вырезать</string>
+    <string name="action_copy">Копировать</string>
+    <string name="action_paste">Вставить</string>
+    <string name="action_select_all">Выделить всё</string>
+    <string name="action_find">Найти…</string>
+    <string name="action_replace">Заменить…</string>
+    <string name="action_goto">Перейти к строке…</string>
+    <string name="action_prettify">Pretty Print (Prettify)</string>
+    <string name="action_minify">Минимизировать</string>
+    <string name="action_preview">Предпросмотр</string>
+    <string name="find_what">Что искать</string>
+    <string name="replace_with">Заменить на</string>
+    <string name="btn_find_next">Найти далее</string>
+    <string name="btn_find_prev">Найти ранее</string>
+    <string name="btn_replace">Заменить</string>
+    <string name="btn_replace_all">Заменить всё</string>
+    <string name="btn_close">Закрыть</string>
+    <string name="match_case">Учитывать регистр</string>
+    <string name="match_whole_word">Только целое слово</string>
+    <string name="use_regex">Регулярное выражение</string>
+    <string name="wrap_around">По кругу</string>
+    <string name="yes">Да</string>
+    <string name="no">Нет</string>
+    <string name="cancel">Отмена</string>
+</resources>

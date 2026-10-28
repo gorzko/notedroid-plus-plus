@@ -16,8 +16,9 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == "theme_name") {
-            // Applied by MainActivity in onResume; nothing to do here.
+        if (key == "app_language") {
+            val tag = getSharedPreferences("notedroid_settings", MODE_PRIVATE).getString(key, null)
+            com.notedroidplusplus.app.NoteDroidApp.applyLanguage(tag)
         }
     }
 

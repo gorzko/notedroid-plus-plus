@@ -20,6 +20,12 @@
         app:min="8"
         android:max="40" />
     <ListPreference
+        app:key="app_language"
+        app:title="@string/pref_language"
+        app:defaultValue=""
+        app:entries="@array/language_display_names"
+        app:entryValues="@array/language_tags" />
+    <ListPreference
         app:key="theme_name"
         app:title="Editor theme"
         app:defaultValue="Default"

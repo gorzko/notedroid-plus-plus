@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NoteDroid++</string>
+    <string name="tab_new">nuevo %1$d</string>
+    <string name="menu_file">Archivo</string>
+    <string name="menu_edit">Edición</string>
+    <string name="menu_search">Buscar</string>
+    <string name="menu_view">Ver</string>
+    <string name="menu_encoding">Codificación</string>
+    <string name="menu_languages">Lenguajes</string>
+    <string name="menu_settings">Configuración</string>
+    <string name="menu_tools">Herramientas</string>
+    <string name="menu_plugins">Complementos</string>
+    <string name="action_new">Nuevo</string>
+    <string name="action_open">Abrir…</string>
+    <string name="action_save">Guardar</string>
+    <string name="action_save_as">Guardar como…</string>
+    <string name="action_close">Cerrar</string>
+    <string name="action_exit">Salir</string>
+    <string name="action_undo">Deshacer</string>
+    <string name="action_redo">Rehacer</string>
+    <string name="action_cut">Cortar</string>
+    <string name="action_copy">Copiar</string>
+    <string name="action_paste">Pegar</string>
+    <string name="action_select_all">Seleccionar todo</string>
+    <string name="action_find">Buscar…</string>
+    <string name="action_replace">Reemplazar…</string>
+    <string name="action_goto">Ir a la línea…</string>
+    <string name="action_prettify">Pretty Print (Prettify)</string>
+    <string name="action_minify">Minificar</string>
+    <string name="action_preview">Vista previa</string>
+    <string name="find_what">Buscar qué</string>
+    <string name="replace_with">Reemplazar con</string>
+    <string name="btn_find_next">Buscar siguiente</string>
+    <string name="btn_find_prev">Buscar anterior</string>
+    <string name="btn_replace">Reemplazar</string>
+    <string name="btn_replace_all">Reemplazar todo</string>
+    <string name="btn_close">Cerrar</string>
+    <string name="match_case">Coincidir mayúsculas</string>
+    <string name="match_whole_word">Palabra completa</string>
+    <string name="use_regex">Expresión regular</string>
+    <string name="wrap_around">Volver al inicio</string>
+    <string name="yes">Sí</string>
+    <string name="no">No</string>
+    <string name="cancel">Cancelar</string>
+</resources>

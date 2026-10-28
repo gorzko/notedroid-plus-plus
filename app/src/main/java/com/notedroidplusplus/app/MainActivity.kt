@@ -4,7 +4,19 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.pdf.PdfDocument
 import android.net.Uri
+import android.print.PrintAttributes
+import android.print.PrintDocumentAdapter
+import android.print.PrintDocumentInfo
+import android.print.PrintManager
+import android.print.PrintDocumentAdapter.LayoutResultCallback
+import android.print.PrintDocumentAdapter.WriteResultCallback
+import android.os.CancellationSignal
+import android.text.InputFilter
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -67,7 +79,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
         var document: Document,
         var tab: TabLayout.Tab?,
         val history: com.notedroidplusplus.app.core.UndoHistory = com.notedroidplusplus.app.core.UndoHistory(),
-        var caret: Int = 0
+        var caret: Int = 0,
+        var readOnly: Boolean = false
     )
 
     private val tabs = mutableListOf<TabSession>()
@@ -76,6 +89,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private var findOptions = FindOptions()
     private var findPanelOpen = false
     private var pendingCloseIndex = -1
+    private val saveAsQueue = mutableListOf<TabSession>()
+    private var pendingSaveAsSession: TabSession? = null
 
     private val openLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -95,19 +110,23 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 if (resultCode == RESULT_OK) intent?.data else null
         }) { uri ->
             val savedUri = uri
-            if (savedUri != null) {
-                val s = if (pendingCloseIndex >= 0) tabs.getOrNull(pendingCloseIndex) else activeSession()
-                if (s != null) {
-                    pendingSaveEncoding?.let { enc -> s.document = s.document.copy(encoding = enc) }
-                }
+            val encodingTarget = pendingSaveAsSession
+            if (savedUri != null && encodingTarget != null) {
+                pendingSaveEncoding?.let { enc -> encodingTarget.document = encodingTarget.document.copy(encoding = enc) }
             }
             if (savedUri == null) {
                 if (pendingCloseIndex >= 0) pendingCloseIndex = -1
                 pendingSaveEncoding = null
+                pendingSaveAsSession = null
+                saveAsQueue.clear()
                 return@registerForActivityResult
             }
             val index = pendingCloseIndex
-            val session = if (index >= 0) tabs.getOrNull(index) else activeSession()
+            val session = when {
+                index >= 0 -> tabs.getOrNull(index)
+                encodingTarget != null && tabs.contains(encodingTarget) -> encodingTarget
+                else -> activeSession()
+            }
             if (session != null) {
                 val saved = saveSessionTo(session, savedUri)
                 if (index >= 0) {
@@ -116,6 +135,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
             }
             pendingCloseIndex = -1
             pendingSaveEncoding = null
+            pendingSaveAsSession = null
+            launchNextQueuedSaveAs()
         }
 
     private val fifLauncher =
@@ -313,7 +334,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         super.onSaveInstanceState(outState)
         syncActiveDocument()
         activeSession()?.let { it.caret = editor.selectionStart }
-        val states = tabs.map { arrayOf(it.document.uri, it.document.fileName, it.document.text, it.document.language.name, it.document.encoding, it.document.lineEnding, it.document.modified, it.caret) }
+        val states = tabs.map { arrayOf(it.document.uri, it.document.fileName, it.document.text, it.document.language.name, it.document.encoding, it.document.lineEnding, it.document.modified, it.caret, it.readOnly) }
         outState.putSerializable(KEY_TABS, ArrayList(states))
         outState.putInt(KEY_ACTIVE, active)
     }
@@ -334,6 +355,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             val session = addTab(doc.uri?.let { Uri.parse(it) }, doc.text, name = doc.fileName)
             session.document = doc
             session.caret = arr[7] as Int
+            session.readOnly = arr[8] as? Boolean ?: false
         }
         val act = state.getInt(KEY_ACTIVE, 0).coerceIn(0, tabs.size - 1)
         activateTab(act)
@@ -379,6 +401,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun setEditorText(text: String) {
         val s = activeSession() ?: return
+        if (s.readOnly) return
         val before = editor.text?.toString() ?: ""
         editor.removeTextChangedListener(tw)
         editor.setText(text)
@@ -386,8 +409,10 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.addTextChangedListener(tw)
         if (before != text) {
             pushWholeTextChange(s, before, text)
+            s.document = s.document.copy(text = text, modified = true)
+        } else {
+            s.document = s.document.copy(text = text)
         }
-        s.document = s.document.copy(text = text, modified = true)
         refreshTabLabels()
         updateStatus()
     }
@@ -519,6 +544,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 hasBom = loaded.hadBom,
                 modified = false
             )
+            current.readOnly = false
+            editor.filters = emptyArray()
             editor.removeTextChangedListener(tw)
             editor.setText(loaded.text)
             editor.language = language
@@ -545,14 +572,24 @@ class MainActivity : AppCompatActivity(), PluginHost {
         syncActiveDocument()
         active = index
         val s = tabs[index]
+        editor.filters = emptyArray()
         editor.removeTextChangedListener(tw)
         editor.setText(s.document.text)
         editor.language = s.document.language
         editor.setSelection(s.caret.coerceIn(0, s.document.text.length))
         editor.addTextChangedListener(tw)
+        applyReadOnly(s)
         refreshTabLabels()
         updateStatus()
     }
+
+    private fun applyReadOnly(s: TabSession) {
+        editor.filters = if (s.readOnly) {
+            arrayOf(InputFilter { source, _, _, _, _, _ -> if (source.isNullOrEmpty()) null else "" })
+        } else emptyArray()
+    }
+
+    private fun isEditorLocked(): Boolean = activeSession()?.readOnly == true
 
     private fun syncActiveDocument() {
         val s = activeSession() ?: return
@@ -588,9 +625,13 @@ class MainActivity : AppCompatActivity(), PluginHost {
         val line = before.count { it == '\n' } + 1
         val col = pos - before.lastIndexOf('\n')
         binding.statusPosition.text = getString(R.string.line_col, line, col)
-        val selLen = editor.selectionEnd - editor.selectionStart
-        binding.statusSelection.text = if (selLen > 0) getString(R.string.sel, selLen) else ""
         val s = activeSession()
+        val selLen = editor.selectionEnd - editor.selectionStart
+        binding.statusSelection.text = when {
+            selLen > 0 -> getString(R.string.sel, selLen)
+            s?.readOnly == true -> getString(R.string.readonly_status)
+            else -> ""
+        }
         binding.statusEncoding.text = s?.document?.encoding ?: "UTF-8"
         binding.statusEol.text = when (s?.document?.lineEnding) {
             "\r\n" -> "Windows (CR LF)"
@@ -636,9 +677,20 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .setItems(encodings.toTypedArray()) { _, which ->
                 pendingSaveEncoding = encodings[which]
                 pendingCloseIndex = -1
+                pendingSaveAsSession = s
                 saveAsLauncher.launch(mimeFor(s.document.fileName) to s.document.fileName)
             }
-            .setNegativeButton(R.string.cancel) { _, _ -> pendingSaveEncoding = null }
+            .setNegativeButton(R.string.cancel) { _, _ ->
+                pendingSaveEncoding = null
+                pendingSaveAsSession = null
+                saveAsQueue.clear()
+                launchNextQueuedSaveAs()
+            }
+            .setOnCancelListener {
+                pendingSaveEncoding = null
+                pendingSaveAsSession = null
+                saveAsQueue.clear()
+            }
             .show()
     }
 
@@ -783,6 +835,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun replaceOne() {
+        if (isEditorLocked()) return
         refreshFindOptions()
         val text = editor.text?.toString() ?: return
         val selStart = editor.selectionStart.coerceAtMost(editor.selectionEnd)
@@ -829,6 +882,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     // ---- Undo / Redo ----
 
     private fun performUndo() {
+        if (isEditorLocked()) return
         val s = activeSession() ?: return
         val current = editor.text?.toString() ?: return
         val prev = s.history.undo(current) ?: return
@@ -842,6 +896,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun performRedo() {
+        if (isEditorLocked()) return
         val s = activeSession() ?: return
         val current = editor.text?.toString() ?: return
         val next = s.history.redo(current) ?: return
@@ -926,6 +981,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun applyMarkdown(op: (String, Int, Int) -> MarkdownActions.Result) {
         if (previewMode != null) return
+        if (isEditorLocked()) return
         val text = editor.text?.toString() ?: return
         val s = editor.selectionStart.coerceAtLeast(0)
         val e = editor.selectionEnd.coerceAtLeast(s)
@@ -960,10 +1016,239 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.setSelection(s, e)
     }
 
-    private fun trimTrailing() {
-        val t = TextUtils.trimTrailingWhitespace(editor.text?.toString() ?: "")
-        setEditorText(t)
+    /** Applies a line-span transform (selection span or whole document), single undo step via setEditorText. */
+    private fun applyLineOp(eol: String, op: (String, Int, Int) -> String) {
+        if (isEditorLocked()) return
+        val text = editor.text?.toString() ?: return
+        val caret = editor.selectionStart.coerceIn(0, text.length)
+        val (first, last) = TextUtils.lineSpanForSelection(text, editor.selectionStart, editor.selectionEnd)
+        val replaced = op(text, first, last)
+        setEditorText(replaced)
+        if (replaced != text) {
+            editor.setSelection(caret.coerceIn(0, replaced.length))
+        }
     }
+
+    private fun applySelectionOp(op: (String, Int, Int) -> String) {
+        if (isEditorLocked()) return
+        val text = editor.text?.toString() ?: return
+        val s = editor.selectionStart.coerceAtMost(editor.selectionEnd)
+        val e = editor.selectionEnd.coerceAtLeast(editor.selectionStart)
+        val replaced = op(text, s, e)
+        if (replaced != text) {
+            setEditorText(replaced)
+            editor.setSelection(s, e)
+        }
+    }
+
+    private fun moveActiveLine(eol: String, up: Boolean) {
+        if (isEditorLocked()) return
+        val text = editor.text?.toString() ?: return
+        val caret = editor.selectionStart.coerceIn(0, text.length)
+        val (line, _) = TextUtils.lineSpanForSelection(text, editor.selectionStart, editor.selectionEnd)
+        val replaced = if (up) TextUtils.moveLineUp(text, line, eol) else TextUtils.moveLineDown(text, line, eol)
+        setEditorText(replaced)
+        if (replaced != text) {
+            val col = caret - TextUtils.lineIndexToOffset(text, line)
+            val newLine = if (up) line - 1 else line + 1
+            val newStart = TextUtils.lineIndexToOffset(replaced, newLine)
+            editor.setSelection((newStart + col).coerceIn(0, replaced.length))
+        }
+    }
+
+    private fun insertAtCaret(value: String) {
+        if (isEditorLocked() || value.isEmpty()) return
+        val pos = editor.selectionStart.coerceAtMost(editor.selectionEnd)
+        editor.text?.insert(pos, value)
+    }
+
+    private fun promptCustomDate(now: Long) {
+        val input = EditText(this).apply {
+            hint = getString(R.string.date_format_hint)
+            setText(prefs.getString("date_format_custom", "yyyy-MM-dd HH:mm:ss") ?: "yyyy-MM-dd HH:mm:ss")
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.date_format_prompt)
+            .setView(input)
+            .setPositiveButton(R.string.md_link_ok) { _, _ ->
+                val pattern = input.text.toString()
+                prefs.edit().putString("date_format_custom", pattern).apply()
+                val formatted = TextUtils.formatDateTime(pattern, now)
+                if (formatted.isEmpty()) {
+                    Toast.makeText(this, R.string.date_format_invalid, Toast.LENGTH_SHORT).show()
+                } else insertAtCaret(formatted)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun copyToClipboard(value: String) {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText(getString(R.string.app_name), value))
+        Toast.makeText(this, R.string.copy_done, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun saveAll() {
+        var saved = 0
+        val targets = tabs.toList()
+        for ((index, s) in targets.withIndex()) {
+            if (!s.document.modified) continue
+            val uri = s.document.uri
+            if (uri != null) {
+                if (index == active) syncActiveDocument()
+                if (saveSessionTo(s, Uri.parse(uri))) saved++
+            }
+        }
+        saveAsQueue.clear()
+        saveAsQueue.addAll(tabs.filter { it.document.modified && it.document.uri == null })
+        Toast.makeText(this, getString(R.string.save_all_result, saved), Toast.LENGTH_SHORT).show()
+        launchNextQueuedSaveAs()
+    }
+
+    /** Starts the Save As flow for the next queued untitled tab (Save All), one picker at a time. */
+    private fun launchNextQueuedSaveAs() {
+        val next = saveAsQueue.removeFirstOrNull() ?: return
+        if (!tabs.contains(next) || !next.document.modified) return launchNextQueuedSaveAs()
+        pendingSaveAsSession = next
+        saveAsWithEncoding(next)
+    }
+
+    private fun reloadActive() {
+        val s = activeSession() ?: return
+        val uriString = s.document.uri ?: run {
+            Toast.makeText(this, getString(R.string.error_load_failed, "no file"), Toast.LENGTH_SHORT).show()
+            return
+        }
+        val doReload = {
+            try {
+                syncActiveDocument()
+                val uri = Uri.parse(uriString)
+                val loaded = files.load(uri)
+                s.document = s.document.copy(
+                    text = loaded.text,
+                    encoding = loaded.charset.name(),
+                    lineEnding = loaded.lineEnding,
+                    hasBom = loaded.hadBom,
+                    modified = false
+                )
+                s.history.clear()
+                editor.filters = emptyArray()
+                editor.removeTextChangedListener(tw)
+                editor.setText(loaded.text)
+                editor.language = ContentSniffer.detectWithFileName(s.document.fileName, loaded.text)
+                editor.setSelection(0)
+                editor.addTextChangedListener(tw)
+                applyReadOnly(s)
+                refreshTabLabels()
+                updateStatus()
+            } catch (e: Exception) {
+                Toast.makeText(this, getString(R.string.reload_failed, e.message), Toast.LENGTH_LONG).show()
+            }
+        }
+        if (s.document.modified) {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.reload_confirm_title)
+                .setMessage(R.string.reload_confirm_msg)
+                .setPositiveButton(R.string.yes) { _, _ -> doReload() }
+                .setNegativeButton(R.string.no, null)
+                .show()
+        } else doReload()
+    }
+
+    private fun toggleReadOnly() {
+        val s = activeSession() ?: return
+        s.readOnly = !s.readOnly
+        applyReadOnly(s)
+        updateStatus()
+    }
+
+    private fun printActive() {
+        val s = activeSession() ?: return
+        syncActiveDocument()
+        val text = s.document.text.ifEmpty { " " }
+        val defaultMargin = 36f
+        var layoutWidth = 0
+        var layoutHeight = 0
+        var marginH = defaultMargin
+        var marginV = defaultMargin
+        var printWidth = 595
+        var printHeight = 842
+        val adapter = object : PrintDocumentAdapter() {
+            override fun onLayout(oldAttributes: PrintAttributes?, newAttributes: PrintAttributes,
+                                  cancellationSignal: CancellationSignal?, callback: LayoutResultCallback, extras: android.os.Bundle?) {
+                if (cancellationSignal?.isCanceled == true) {
+                    callback.onLayoutCancelled()
+                    return
+                }
+                // PdfDocument pages are in points (1/72"); media/margins come in mils (1/1000").
+                val media = newAttributes.mediaSize
+                printWidth = if (media != null) media.widthMils * 72 / 1000 else 595
+                printHeight = if (media != null) media.heightMils * 72 / 1000 else 842
+                val margins = newAttributes.minMargins
+                marginH = margins?.leftMils?.times(72f)?.div(1000f) ?: defaultMargin
+                marginV = margins?.topMils?.times(72f)?.div(1000f) ?: defaultMargin
+                if (printWidth <= 2 * marginH || printHeight <= 2 * marginV) {
+                    marginH = defaultMargin
+                    marginV = defaultMargin
+                }
+                layoutWidth = (printWidth - 2 * marginH).toInt().coerceAtLeast(1)
+                layoutHeight = (printHeight - 2 * marginV).toInt().coerceAtLeast(1)
+                callback.onLayoutFinished(PrintDocumentInfo.Builder(s.document.fileName)
+                    .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                    .build(), true)
+            }
+
+            override fun onWrite(pages: Array<out android.print.PageRange>?, destination: android.os.ParcelFileDescriptor,
+                                 cancellationSignal: CancellationSignal?, callback: WriteResultCallback) {
+                Thread {
+                    if (cancellationSignal?.isCanceled == true) {
+                        callback.onWriteCancelled()
+                        return@Thread
+                    }
+                    val paint = TextPaint().apply {
+                        textSize = 11f
+                        isAntiAlias = true
+                    }
+                    val w = if (layoutWidth > 0) layoutWidth else (printWidth - 2 * defaultMargin).toInt().coerceAtLeast(1)
+                    val h = if (layoutHeight > 0) layoutHeight else (printHeight - 2 * defaultMargin).toInt().coerceAtLeast(1)
+                    val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, w)
+                        .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                        .setLineSpacing(2f, 1.1f)
+                        .build()
+                    val lineHeight = if (layout.lineCount > 0) layout.getLineBottom(0).coerceAtLeast(1) else 1
+                    val linesPerPage = (h / lineHeight).coerceAtLeast(1)
+                    val pageCount = (layout.lineCount + linesPerPage - 1) / linesPerPage
+                    val doc = PdfDocument()
+                    try {
+                        for (pageNo in 1..pageCount) {
+                            val info = PdfDocument.PageInfo.Builder(printWidth, printHeight, pageNo).create()
+                            val page = doc.startPage(info)
+                            val canvas = page.canvas
+                            canvas.save()
+                            canvas.translate(marginH, marginV - (pageNo - 1) * linesPerPage * lineHeight)
+                            canvas.clipRect(0, (pageNo - 1) * linesPerPage * lineHeight,
+                                w, pageNo * linesPerPage * lineHeight)
+                            layout.draw(canvas)
+                            canvas.restore()
+                            doc.finishPage(page)
+                        }
+                        java.io.FileOutputStream(destination.fileDescriptor).use { out ->
+                            doc.writeTo(out)
+                        }
+                        callback.onWriteFinished(arrayOf(android.print.PageRange.ALL_PAGES))
+                    } catch (e: Exception) {
+                        callback.onWriteFailed(e.message)
+                    } finally {
+                        doc.close()
+                    }
+                }.start()
+            }
+        }
+        (getSystemService(PRINT_SERVICE) as PrintManager).print(
+            getString(R.string.print_job_name, s.document.fileName), adapter, PrintAttributes.Builder().build()
+        )
+    }
+
 
     private fun setEncoding(name: String) {
         activeSession()?.let {
@@ -1044,6 +1329,10 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.open_recent)) { showRecentMenu() }
         item(getString(R.string.action_save)) { saveActive() }
         item(getString(R.string.action_save_as)) { activeSession()?.let { saveAsWithEncoding(it) } }
+        item(getString(R.string.action_save_all)) { saveAll() }
+        item(getString(R.string.action_reload)) { reloadActive() }
+        item(getString(R.string.action_print)) { printActive() }
+        item(getString(R.string.action_readonly)) { toggleReadOnly() }
         item(getString(R.string.action_close)) { closeActive() }
         item(getString(R.string.action_exit)) { finish() }
     }
@@ -1052,6 +1341,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.action_undo)) { performUndo() }
         item(getString(R.string.action_redo)) { performRedo() }
         item(getString(R.string.action_cut)) {
+            if (isEditorLocked()) return@item
             val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText(getString(R.string.app_name), getSelection()))
             editor.text?.delete(editor.selectionStart, editor.selectionEnd)
@@ -1061,17 +1351,97 @@ class MainActivity : AppCompatActivity(), PluginHost {
             cm.setPrimaryClip(ClipData.newPlainText(getString(R.string.app_name), getSelection()))
         }
         item(getString(R.string.action_paste)) {
+            if (isEditorLocked()) return@item
             val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
             val clip = cm.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
             editor.text?.insert(editor.selectionStart.coerceAtMost(editor.selectionEnd), clip)
         }
         item(getString(R.string.action_select_all)) { editor.selectAll() }
+        item(getString(R.string.menu_line_ops)) { showLineOpsMenu() }
+        item(getString(R.string.menu_convert_case)) { showConvertCaseMenu() }
+        item(getString(R.string.menu_blank_ops)) { showBlankOpsMenu() }
+        item(getString(R.string.menu_insert)) { showInsertMenu() }
+        item(getString(R.string.menu_copy_clipboard)) { showCopyClipboardMenu() }
+        item(getString(R.string.menu_indent)) { showIndentMenu() }
+    }
+
+    private fun showLineOpsMenu() = popup {
+        val eol = activeSession()?.document?.lineEnding ?: "\n"
+        item(getString(R.string.op_duplicate_line)) { applyLineOp(eol) { t, f, l -> TextUtils.duplicateLines(t, f, l, eol) } }
+        item(getString(R.string.op_split_lines)) { applySelectionOp { t, s, e -> TextUtils.splitLines(t, s, e, eol) } }
+        item(getString(R.string.op_join_lines)) {
+            val s = editor.selectionStart.coerceAtMost(editor.selectionEnd)
+            val e = editor.selectionEnd.coerceAtLeast(editor.selectionStart)
+            if (s == e) {
+                Toast.makeText(this@MainActivity, R.string.join_needs_multiline, Toast.LENGTH_SHORT).show()
+            } else applySelectionOp { t, ss, ee -> TextUtils.joinLines(t, ss, ee) }
+        }
+        item(getString(R.string.op_remove_empty)) { applyLineOp(eol) { t, f, l -> TextUtils.removeEmptyLines(t, f, l, eol, includingBlank = false) } }
+        item(getString(R.string.op_remove_blank)) { applyLineOp(eol) { t, f, l -> TextUtils.removeEmptyLines(t, f, l, eol, includingBlank = true) } }
+        item(getString(R.string.op_move_up)) { moveActiveLine(eol, up = true) }
+        item(getString(R.string.op_move_down)) { moveActiveLine(eol, up = false) }
+        item(getString(R.string.op_reverse)) { applyLineOp(eol) { t, f, l -> TextUtils.reverseLines(t, f, l, eol) } }
+        item(getString(R.string.op_randomize)) { applyLineOp(eol) { t, f, l -> TextUtils.randomizeLines(t, f, l, eol, java.util.Random()) } }
+        item(getString(R.string.op_sort_asc)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, false, numeric = false, ignoreCase = true) } }
+        item(getString(R.string.op_sort_desc)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, true, numeric = false, ignoreCase = true) } }
+        item(getString(R.string.op_sort_asc_lexicographic)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, false, numeric = false, ignoreCase = false) } }
+        item(getString(R.string.op_sort_desc_lexicographic)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, true, numeric = false, ignoreCase = false) } }
+        item(getString(R.string.op_sort_asc_numeric)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, false, numeric = true, ignoreCase = false) } }
+        item(getString(R.string.op_sort_desc_numeric)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, true, numeric = true, ignoreCase = false) } }
+        item(getString(R.string.op_sort_asc_ci)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, false, numeric = false, ignoreCase = true) } }
+        item(getString(R.string.op_sort_desc_ci)) { applyLineOp(eol) { t, f, l -> TextUtils.sortLines(t, f, l, eol, true, numeric = false, ignoreCase = true) } }
+        item(getString(R.string.op_remove_dup)) { applyLineOp(eol) { t, f, l -> TextUtils.removeDuplicateLines(t, f, l, eol, consecutiveOnly = false) } }
+        item(getString(R.string.op_remove_consecutive_dup)) { applyLineOp(eol) { t, f, l -> TextUtils.removeDuplicateLines(t, f, l, eol, consecutiveOnly = true) } }
+    }
+
+    private fun showConvertCaseMenu() = popup {
         item(getString(R.string.action_uppercase)) { transformCase { t, s, e -> TextUtils.toUpper(t, s, e) } }
         item(getString(R.string.action_lowercase)) { transformCase { t, s, e -> TextUtils.toLower(t, s, e) } }
         item(getString(R.string.action_titlecase)) { transformCase { t, s, e -> TextUtils.titleCase(t, s, e) } }
+        item(getString(R.string.op_proper)) { transformCase { t, s, e -> TextUtils.properCase(t, s, e, blend = false) } }
+        item(getString(R.string.op_proper_blend)) { transformCase { t, s, e -> TextUtils.properCase(t, s, e, blend = true) } }
+        item(getString(R.string.op_sentence)) { transformCase { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = false) } }
+        item(getString(R.string.op_sentence_blend)) { transformCase { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = true) } }
         item(getString(R.string.action_toggle_case)) { transformCase { t, s, e -> TextUtils.toggleCase(t, s, e) } }
-        item(getString(R.string.action_trim_trailing)) { trimTrailing() }
+        item(getString(R.string.op_invert)) { transformCase { t, s, e -> TextUtils.invertCase(t, s, e) } }
+        item(getString(R.string.op_random_case)) { transformCase { t, s, e -> TextUtils.randomCase(t, s, e, java.util.Random()) } }
     }
+
+    private fun showBlankOpsMenu() = popup {
+        val eol = activeSession()?.document?.lineEnding ?: "\n"
+        item(getString(R.string.action_trim_trailing)) { setEditorText(TextUtils.trimTrailingWhitespace(editor.text?.toString() ?: "")) }
+        item(getString(R.string.op_trim_leading)) { setEditorText(TextUtils.trimLeadingWhitespace(editor.text?.toString() ?: "", eol)) }
+        item(getString(R.string.op_trim_leading_trailing)) { setEditorText(TextUtils.trimLeadingAndTrailing(editor.text?.toString() ?: "", eol)) }
+        item(getString(R.string.op_eol_space)) { setEditorText(TextUtils.eolToSpace(editor.text?.toString() ?: "")) }
+        item(getString(R.string.op_tab_space)) { setEditorText(TextUtils.tabToSpace(editor.text?.toString() ?: "", eol, 4)) }
+        item(getString(R.string.op_space_tab)) { setEditorText(TextUtils.spaceToTab(editor.text?.toString() ?: "", eol, 4, all = true)) }
+        item(getString(R.string.op_space_tab_leading)) { setEditorText(TextUtils.spaceToTab(editor.text?.toString() ?: "", eol, 4, all = false)) }
+    }
+
+    private fun showInsertMenu() = popup {
+        val now = System.currentTimeMillis()
+        item(getString(R.string.op_date_short)) { insertAtCaret(TextUtils.formatDateTime(TextUtils.DATETIME_SHORT, now)) }
+        item(getString(R.string.op_date_long)) { insertAtCaret(TextUtils.formatDateTime(TextUtils.DATETIME_LONG, now)) }
+        item(getString(R.string.op_date_custom)) { promptCustomDate(now) }
+    }
+
+    private fun showCopyClipboardMenu() = popup {
+        val s = activeSession()
+        item(getString(R.string.copy_path_filename)) { copyToClipboard(s?.document?.fileName ?: "") }
+        item(getString(R.string.copy_path_full)) { copyToClipboard(s?.document?.uri ?: "") }
+        item(getString(R.string.copy_path_dir)) {
+            val dir = s?.document?.uri
+                ?.let { Uri.parse(it).lastPathSegment?.substringBeforeLast('/') }
+            copyToClipboard(dir ?: "")
+        }
+    }
+
+    private fun showIndentMenu() = popup {
+        val eol = activeSession()?.document?.lineEnding ?: "\n"
+        item(getString(R.string.indent_increase)) { applyLineOp(eol) { t, f, l -> TextUtils.indentIncrease(t, f, l, eol, "\t") } }
+        item(getString(R.string.indent_decrease)) { applyLineOp(eol) { t, f, l -> TextUtils.indentDecrease(t, f, l, eol, "\t") } }
+    }
+
 
     private fun showSearchMenu() = popup {
         item(getString(R.string.action_find)) { toggleFindPanel(false) }

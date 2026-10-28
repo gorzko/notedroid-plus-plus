@@ -480,14 +480,24 @@ class MainActivity : AppCompatActivity(), PluginHost {
             val removed = if (beforeCount > 0) pendingRemoved.takeIf { it != null } ?: "" else ""
             val inserted = if (count > 0) s?.subSequence(start, start + count)?.toString() ?: "" else ""
             when {
-                removed.isNotEmpty() && inserted.isEmpty() -> sess.history.pushDelete(start, removed)
-                inserted.isNotEmpty() && removed.isEmpty() -> sess.history.pushInsert(start, inserted)
-                removed.isNotEmpty() && inserted.isNotEmpty() -> sess.history.pushCompound(
-                    buildList {
-                        add(com.notedroidplusplus.app.core.UndoHistory.Edit.Delete(start, removed))
-                        add(com.notedroidplusplus.app.core.UndoHistory.Edit.Insert(start, inserted))
-                    }
-                )
+                removed.isNotEmpty() && inserted.isEmpty() -> {
+                    sess.history.pushDelete(start, removed)
+                    recordAction(MacroRecorder.Action.Delete(start, start + beforeCount))
+                }
+                inserted.isNotEmpty() && removed.isEmpty() -> {
+                    sess.history.pushInsert(start, inserted)
+                    recordAction(MacroRecorder.Action.Insert(start, inserted))
+                }
+                removed.isNotEmpty() && inserted.isNotEmpty() -> {
+                    sess.history.pushCompound(
+                        buildList {
+                            add(com.notedroidplusplus.app.core.UndoHistory.Edit.Delete(start, removed))
+                            add(com.notedroidplusplus.app.core.UndoHistory.Edit.Insert(start, inserted))
+                        }
+                    )
+                    recordAction(MacroRecorder.Action.Delete(start, start + beforeCount))
+                    recordAction(MacroRecorder.Action.Insert(start, inserted))
+                }
             }
             pendingRemoved = null
             pendingStart = -1
@@ -904,6 +914,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun replaceEverything() {
         refreshFindOptions()
         val (newText, count) = replaceAll(editor.text?.toString() ?: "", findOptions)
+        recordAction(
+            MacroRecorder.Action.ReplaceAll(
+                findOptions.query, findOptions.replaceWith, findOptions.regex, findOptions.matchCase
+            )
+        )
         setEditorText(newText)
         Toast.makeText(this, getString(R.string.replaced_occurrences, count), Toast.LENGTH_SHORT).show()
     }
@@ -918,6 +933,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .setPositiveButton(R.string.yes) { _, _ ->
                 val line = input.text.toString().toIntOrNull() ?: return@setPositiveButton
                 val offset = TextUtils.lineIndexToOffset(text, (line - 1).coerceIn(0, max - 1))
+                recordAction(MacroRecorder.Action.GoToLine(line))
                 editor.setSelection(offset)
                 editor.requestFocus()
             }
@@ -1058,6 +1074,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
         val s = editor.selectionStart.coerceAtMost(editor.selectionEnd)
         val e = editor.selectionEnd.coerceAtLeast(editor.selectionStart)
         val replaced = op(text, s, e)
+        if (replaced != text) {
+            recordAction(MacroRecorder.Action.TransformCase("upper", s, e))
+        }
         setEditorText(replaced)
         editor.setSelection(s, e)
     }

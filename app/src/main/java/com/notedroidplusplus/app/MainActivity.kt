@@ -35,6 +35,7 @@ import com.google.android.material.tabs.TabLayout
 import com.notedroidplusplus.app.core.Document
 import com.notedroidplusplus.app.core.FileManager
 import com.notedroidplusplus.app.core.RecentFiles
+import com.notedroidplusplus.app.core.RecentFilesSettings
 import com.notedroidplusplus.app.core.SaveAsCoordinator
 import com.notedroidplusplus.app.core.SessionStore
 import com.notedroidplusplus.app.core.TextUtils
@@ -507,7 +508,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             val loaded = files.load(uri)
             val fileName = files.displayName(uri)
             loadIntoTab(uri, loaded, fileName, ContentSniffer.detectWithFileName(fileName, loaded.text))
-            recentFiles.add(uri.toString(), fileName)
+            recentFiles.add(uri.toString(), fileName, recentMax)
             refreshTabLabels()
             updateStatus()
         } catch (e: Exception) {
@@ -1462,15 +1463,24 @@ class MainActivity : AppCompatActivity(), PluginHost {
         }
     }
 
+    private val recentMax: Int get() = RecentFilesSettings.parseMax(prefs.getString("recent_max", null))
+    private val recentMode: RecentFilesSettings.DisplayMode
+        get() = if (prefs.getString("recent_display", "name") == "path") RecentFilesSettings.DisplayMode.FULL_PATH
+        else RecentFilesSettings.DisplayMode.NAME_ONLY
+
     private fun showRecentMenu() {
-        val recents = recentFiles.list()
+        val recents = RecentFilesSettings.trim(recentFiles.list(), recentMax)
         if (recents.isEmpty()) {
             Toast.makeText(this, R.string.no_recent_files, Toast.LENGTH_SHORT).show()
             return
         }
         popup {
             recents.forEach { entry ->
-                item(entry.name) { openRecent(entry.uri) }
+                item(RecentFilesSettings.label(entry, recentMode)) { openRecent(entry.uri) }
+            }
+            item(getString(R.string.recent_clear)) {
+                recentFiles.clear()
+                Toast.makeText(this@MainActivity, R.string.recent_cleared, Toast.LENGTH_SHORT).show()
             }
         }
     }

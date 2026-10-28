@@ -77,4 +77,55 @@
         <item>Vibrant Black</item>
         <item>Zenburn</item>
     </string-array>
+    <string-array name="recent_display_names">
+        <item>@string/pref_recent_display_name</item>
+        <item>@string/pref_recent_display_path</item>
+    </string-array>
+    <string-array name="recent_display_values">
+        <item>name</item>
+        <item>path</item>
+    </string-array>
+
+    <string-array name="encoding_names">
+        <item>UTF-8</item>
+        <item>UTF-16LE</item>
+        <item>UTF-16BE</item>
+        <item>UTF-16</item>
+        <item>US-ASCII</item>
+        <item>ISO-8859-1</item>
+        <item>windows-1252</item>
+    </string-array>
+
+    <string-array name="eol_names">
+        <item>Unix (LF)</item>
+        <item>Windows (CRLF)</item>
+        <item>Mac (CR)</item>
+    </string-array>
+    <string-array name="eol_values">
+        <item>\n</item>
+        <item>\r\n</item>
+        <item>\r</item>
+    </string-array>
+
+    <string-array name="current_line_style_names">
+        <item>@string/pref_line_style_none</item>
+        <item>@string/pref_line_style_highlight</item>
+        <item>@string/pref_line_style_frame</item>
+    </string-array>
+    <string-array name="current_line_style_values">
+        <item>none</item>
+        <item>highlight</item>
+        <item>frame</item>
+    </string-array>
+
+    <string-array name="wrap_style_names">
+        <item>@string/pref_wrap_default</item>
+        <item>@string/pref_wrap_aligned</item>
+        <item>@string/pref_wrap_indent</item>
+    </string-array>
+    <string-array name="wrap_style_values">
+        <item>default</item>
+        <item>aligned</item>
+        <item>indent</item>
+    </string-array>
 </resources>

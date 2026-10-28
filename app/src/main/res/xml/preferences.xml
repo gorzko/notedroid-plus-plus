@@ -27,4 +27,24 @@
         app:defaultValue="Default"
         app:entries="@array/theme_names"
         app:entryValues="@array/theme_names" />
+
+    <PreferenceCategory app:title="@string/pref_recent_files">
+        <SeekBarPreference
+            app:key="recent_max"
+            app:title="@string/pref_recent_max"
+            app:defaultValue="10"
+            app:min="1"
+            android:max="50"
+            app:showSeekBarValue="true" />
+        <ListPreference
+            app:key="recent_display"
+            app:title="@string/pref_recent_display"
+            app:defaultValue="name"
+            app:entries="@array/recent_display_names"
+            app:entryValues="@array/recent_display_values" />
+        <Preference
+            app:key="recent_clear"
+            app:title="@string/pref_recent_clear"
+            app:summary="@string/pref_recent_clear_summary" />
+    </PreferenceCategory>
 </PreferenceScreen>

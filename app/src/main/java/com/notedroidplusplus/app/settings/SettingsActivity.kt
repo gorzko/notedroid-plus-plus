@@ -3,8 +3,10 @@ package com.notedroidplusplus.app.settings
 import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import com.notedroidplusplus.app.R
+import com.notedroidplusplus.app.core.RecentFiles
 
 class SettingsActivity : AppCompatActivity() {
 
@@ -12,6 +14,13 @@ class SettingsActivity : AppCompatActivity() {
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             preferenceManager.sharedPreferencesName = "notedroid_settings"
             setPreferencesFromResource(R.xml.preferences, rootKey)
+            findPreference<Preference>("recent_clear")?.setOnPreferenceClickListener {
+                RecentFiles(requireContext()).clear()
+                android.widget.Toast.makeText(
+                    requireContext(), R.string.recent_cleared, android.widget.Toast.LENGTH_SHORT
+                ).show()
+                true
+            }
         }
     }
 

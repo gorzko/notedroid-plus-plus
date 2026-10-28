@@ -991,7 +991,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             val charset = Charset.forName(s.document.encoding)
             val text = s.document.text
             files.save(uri, text, charset, s.document.lineEnding, s.document.hasBom)
-            s.changeHistory.recordSave()
+            s.changeHistory.recordSave(text)
             s.baselineText = text
             s.document = s.document.copy(
                 uri = uri.toString(),
@@ -2729,8 +2729,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun showConvertToMenu() = popup {
-        val all = TextUtils.allCharsets()
-        all.forEach { cs -> item(cs.name()) { convertToEncoding(cs.name()) } }
+        TextUtils.allCharsets().forEach { cs -> item(cs.name()) { convertToEncoding(cs.name()) } }
     }
 
     private fun showCharsetsMenu() {
@@ -2743,8 +2742,13 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun showCharsetFamilyMenu(family: String) {
         val names = TextUtils.CHARSET_FAMILIES.firstOrNull { it.first == family }?.second ?: return
+        val available = names.filter { TextUtils.isCharsetAvailable(it) }
+        if (available.isEmpty()) {
+            Toast.makeText(this, getString(R.string.charsets_unavailable), Toast.LENGTH_SHORT).show()
+            return
+        }
         popup {
-            names.forEach { name -> item(name) { setEncoding(name) } }
+            available.forEach { name -> item(name) { setEncoding(name) } }
         }
     }
 

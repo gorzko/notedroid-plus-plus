@@ -328,11 +328,11 @@ object SyntaxHighlighter {
         ),
         LanguageMode.OBJECTIVE_C to setOf(
             "if", "else", "for", "while", "do", "switch", "case", "default", "break", "continue",
-            "return", "goto", "id", "self", "super", "nil", "Nil", "YES", "NO", "@interface",
-            "@implementation", "@end", "@class", "@protocol", "@property", "@synthesize",
-            "@dynamic", "@public", "@private", "@protected", "@package", "@required",
-            "@optional", "@selector", "@encode", "@autoreleasepool", "@try", "@catch",
-            "@finally", "@throw", "@synchronized"
+            "return", "goto", "id", "self", "super", "nil", "Nil", "YES", "NO", "interface",
+            "implementation", "end", "class", "protocol", "property", "synthesize",
+            "dynamic", "public", "private", "protected", "package", "required",
+            "optional", "selector", "encode", "autoreleasepool", "try", "catch",
+            "finally", "throw", "synchronized"
         ),
         LanguageMode.VISUALBASIC to setOf(
             "AddHandler", "AddressOf", "Alias", "And", "AndAlso", "As", "Boolean", "ByRef",
@@ -522,8 +522,10 @@ object SyntaxHighlighter {
                 LangRule(listOf("#"), null, listOf('"', '\''), keywords, emptySet())
             LanguageMode.CMAKE ->
                 LangRule(listOf("#"), null, listOf('"'), keywords, emptySet(), caseInsensitive = true)
-            LanguageMode.VHDL, LanguageMode.VERILOG ->
+            LanguageMode.VHDL ->
                 LangRule(listOf("--"), null, listOf('"'), keywords, emptySet(), caseInsensitive = true)
+            LanguageMode.VERILOG ->
+                LangRule(listOf("//"), "/*" to "*/", listOf('"'), keywords, emptySet(), caseInsensitive = true)
             LanguageMode.ASSEMBLY ->
                 LangRule(listOf(";"), "/*" to "*/", listOf('\'', '"'), keywords, emptySet(), caseInsensitive = true)
             LanguageMode.AUTOIT ->
@@ -620,9 +622,11 @@ object SyntaxHighlighter {
             if (word.isEmpty()) return
             val w = word.toString()
             val cmp = if (rule.caseInsensitive) w.lowercase() else w
+            val keywordHit = rule.keywords.contains(cmp) ||
+                (rule.caseInsensitive && rule.keywords.any { it.equals(w, ignoreCase = true) })
             val kind = when {
-                rule.types.contains(cmp) && !rule.keywords.contains(cmp) -> TokenKind.TYPE
-                rule.keywords.contains(cmp) -> TokenKind.KEYWORD
+                rule.types.contains(cmp) && !keywordHit -> TokenKind.TYPE
+                keywordHit -> TokenKind.KEYWORD
                 else -> null
             }
             if (kind != null) tokens.add(SyntaxToken(start, i, kind))

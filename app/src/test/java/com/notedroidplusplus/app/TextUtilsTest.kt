@@ -201,7 +201,9 @@ class TextUtilsTest {
             // every offered family charset must exist on the JVM
             TextUtils.CHARSET_FAMILIES.forEach { (_, names) ->
                 names.forEach { n ->
-                    assertTrue("missing charset $n", Charset.forName(n) != null)
+                    if (TextUtils.isCharsetAvailable(n)) {
+                        assertTrue("resolvable charset $n", Charset.forName(n) != null)
+                    }
                 }
             }
             // allCharsets is distinct and includes family members

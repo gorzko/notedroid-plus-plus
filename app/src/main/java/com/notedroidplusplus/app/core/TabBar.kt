@@ -30,5 +30,5 @@ object TabBar {
 
     /** Elides a tab label to [maxChars] with an ellipsis; <=0 disables eliding. */
     fun elideLabel(label: String, maxChars: Int): String =
-        if (maxChars in 1 until label.length) label.take(maxChars - 1) + "…" else label
+        if (maxChars in 1 until label.length) label.take(maxChars - 1) + "\u2026" else label
 }

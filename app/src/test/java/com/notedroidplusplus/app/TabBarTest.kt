@@ -35,7 +35,7 @@ class TabBarTest {
     fun elideLabel() {
         assertEquals("README.md", TabBar.elideLabel("README.md", 0))
         assertEquals("README.md", TabBar.elideLabel("README.md", 20))
-        assertEquals("Rea…", TabBar.elideLabel("README.md", 4))
-        assertEquals("…", TabBar.elideLabel("README.md", 1))
+        assertEquals("Rea\u2026", TabBar.elideLabel("README.md", 4))
+        assertEquals("\u2026", TabBar.elideLabel("README.md", 1))
     }
 }

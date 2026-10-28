@@ -11,7 +11,6 @@ class ChangeHistoryTest {
     @Test
     fun editMarksLineModifiedUnsaved() {
         val h = ChangeHistory()
-        val base = "alpha\nbeta\ngamma"
         h.recordEdit("alpha\nbeta!\ngamma", 10, 0, 1)
         assertEquals(LineState.MODIFIED_UNSAVED, h.stateAt(1))
         assertEquals(LineState.NONE, h.stateAt(0))
@@ -21,8 +20,8 @@ class ChangeHistoryTest {
     @Test
     fun saveTurnsUnsavedIntoSaved() {
         val h = ChangeHistory()
-        h.recordEdit("alpha\nbeta!\ngamma", 11, 0, 1)
-        h.recordSave()
+        h.recordEdit("alpha\nbeta!\ngamma", 10, 0, 1)
+        h.recordSave("alpha\nbeta!\ngamma")
         assertEquals(LineState.MODIFIED_SAVED, h.stateAt(1))
     }
 
@@ -30,8 +29,8 @@ class ChangeHistoryTest {
     fun undoBackToBaselineIsRevertOriginal() {
         val h = ChangeHistory()
         val base = "alpha\nbeta\ngamma"
-        h.recordEdit("alpha\nbeta!\ngamma", 11, 0, 1)
-        h.recordSave()
+        h.recordEdit("alpha\nbeta!\ngamma", 10, 0, 1)
+        h.recordSave("alpha\nbeta!\ngamma")
         // undo restores the line to its baseline content
         h.reconcile(base, base)
         assertEquals(LineState.REVERT_ORIGINAL, h.stateAt(1))
@@ -41,28 +40,40 @@ class ChangeHistoryTest {
     fun undoToDifferentContentKeepsModifiedUnsaved() {
         val h = ChangeHistory()
         val base = "alpha\nbeta\ngamma"
-        h.recordEdit("alpha\nbeta!\ngamma", 11, 0, 1)
-        // undo brings back yet another content (still not the baseline)
+        h.recordEdit("alpha\nbeta!\ngamma", 10, 0, 1)
+        // undo brings back yet another content (neither baseline nor saved)
         h.reconcile("alpha\nbeta?\ngamma", base)
         assertEquals(LineState.MODIFIED_UNSAVED, h.stateAt(1))
     }
 
     @Test
-    fun savedThenEditedAgainIsRevertModifiedAfterUndo() {
+    fun undoBackToSavedContentIsRevertModified() {
         val h = ChangeHistory()
         val base = "alpha\nbeta\ngamma"
         h.recordEdit("alpha\nBETA\ngamma", 7, 3, 4)
-        h.recordSave()
-        // second edit round then undo: line differs from baseline but was saved before
+        h.recordSave("alpha\nBETA\ngamma")
+        // second edit round, then undo restores the previously SAVED content
         h.recordEdit("alpha\nBETA2\ngamma", 7, 4, 5)
-        h.reconcile("alpha\nBETA2\ngamma", base)
+        h.reconcile("alpha\nBETA\ngamma", base)
         assertEquals(LineState.REVERT_MODIFIED, h.stateAt(1))
     }
 
     @Test
-    fun multiLineEditMarksSpan() {
+    fun savedLineEditedAgainIsModifiedUnsaved() {
         val h = ChangeHistory()
-        // replacing the "beta" run plus its newline merges lines 0 and 1
+        val base = "alpha\nbeta\ngamma"
+        h.recordEdit("alpha\nBETA\ngamma", 7, 3, 4)
+        h.recordSave("alpha\nBETA\ngamma")
+        // second edit stays unsaved: still modified-unsaved (orange)
+        h.recordEdit("alpha\nBETA2\ngamma", 7, 4, 5)
+        h.reconcile("alpha\nBETA2\ngamma", base)
+        assertEquals(LineState.MODIFIED_UNSAVED, h.stateAt(1))
+    }
+
+    @Test
+    fun multiLineEditMarksSpan() {
+        // replacing a run that includes the newline merges lines 0 and 1
+        val h = ChangeHistory()
         h.recordEdit("alphaX\ngamma\ndelta", 5, 5, 1)
         assertEquals(LineState.MODIFIED_UNSAVED, h.stateAt(0))
         assertEquals(LineState.NONE, h.stateAt(1))
@@ -77,7 +88,7 @@ class ChangeHistoryTest {
     @Test
     fun reloadResetsHistory() {
         val h = ChangeHistory()
-        h.recordEdit("alpha\nbeta!\ngamma", 11, 0, 1)
+        h.recordEdit("alpha\nbeta!\ngamma", 10, 0, 1)
         h.reset()
         assertTrue(h.isEmpty())
         assertEquals(LineState.NONE, h.stateAt(1))

@@ -21,13 +21,19 @@ class ChangeHistory {
 
     private val states = mutableMapOf<Int, LineState>()
 
+    /** Line content at its last save; REVERT_MODIFIED reconciliation source. */
+    private val savedContent = mutableMapOf<Int, String>()
+
     fun stateAt(line: Int): LineState = states[line] ?: LineState.NONE
 
     fun markedLines(): Map<Int, LineState> = states.toMap()
 
     fun isEmpty(): Boolean = states.isEmpty()
 
-    fun clear() = states.clear()
+    fun clear() {
+        states.clear()
+        savedContent.clear()
+    }
 
     private fun lineOfOffset(text: String, offset: Int): Int {
         val o = offset.coerceIn(0, text.length)
@@ -69,8 +75,15 @@ class ChangeHistory {
         for (line in first..spanEnd) states[line] = LineState.MODIFIED_UNSAVED
     }
 
-    /** Save event: every unsaved modification becomes saved. */
-    fun recordSave() {
+    /** Save event: every unsaved modification becomes saved; remember the saved content. */
+    fun recordSave(text: String = "") {
+        if (text.isNotEmpty()) {
+            for (line in states.keys) {
+                if (states[line] == LineState.MODIFIED_UNSAVED || states[line] == LineState.MODIFIED_SAVED) {
+                    savedContent[line] = lineContent(text, line)
+                }
+            }
+        }
         states.replaceAll { _, v -> if (v == LineState.MODIFIED_UNSAVED) LineState.MODIFIED_SAVED else v }
     }
 
@@ -87,9 +100,10 @@ class ChangeHistory {
             if (line >= totalLines) { states.remove(line); continue }
             val current = states[line] ?: continue
             val matchesBaseline = line < lineCount(baseline) && lineContent(text, line) == lineContent(baseline, line)
+            val matchesSaved = savedContent[line] != null && lineContent(text, line) == savedContent[line]
             states[line] = when {
                 matchesBaseline -> LineState.REVERT_ORIGINAL
-                current == LineState.MODIFIED_SAVED || current == LineState.REVERT_MODIFIED -> LineState.REVERT_MODIFIED
+                matchesSaved -> LineState.REVERT_MODIFIED
                 else -> LineState.MODIFIED_UNSAVED
             }
         }

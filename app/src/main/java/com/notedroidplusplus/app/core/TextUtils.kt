@@ -41,10 +41,14 @@ object TextUtils {
         "Western European" to listOf("ISO-8859-1", "windows-1252", "MacRoman")
     )
 
-    /** All charsets offered by the Encoding menu (base list + family members). */
+    /** All charsets resolvable on this runtime (base list + family members). */
     fun allCharsets(): List<Charset> = (ENCODINGS.map { it.name() } + CHARSET_FAMILIES.flatMap { it.second })
         .mapNotNull { name -> runCatching { Charset.forName(name) }.getOrNull() }
         .distinctBy { it.name() }
+
+    /** True when the charset exists on this runtime (menu shows it only then). */
+    fun isCharsetAvailable(name: String): Boolean =
+        runCatching { Charset.forName(name) }.isSuccess
 
     /**
      * Notepad++ Convert-to semantics for a buffer held as text: the glyphs stay
@@ -74,7 +78,7 @@ object TextUtils {
         val head = text.take(4096)
         val trimmed = head.trimStart()
         val declRe = "encoding=\"([A-Za-z0-9._:-]+)\"".toRegex()
-        val charsetRe = "charset=([A-Za-z0-9._:-]+)".toRegex(RegexOption.IGNORE_CASE)
+        val charsetRe = "charset=[\"']?([A-Za-z0-9._:-]+)".toRegex(RegexOption.IGNORE_CASE)
         val name = when {
             trimmed.startsWith("<?xml") -> declRe.find(head)?.groupValues?.get(1)
             head.contains("<meta", ignoreCase = true) ->

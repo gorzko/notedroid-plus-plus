@@ -253,6 +253,8 @@
     <string name="summary_modified">Modified: %1$s</string>
     <string name="summary_untitled">Untitled</string>
 
+    <string name="pref_padding_left">Editor left padding (dp)</string>
+    <string name="pref_padding_right">Editor right padding (dp)</string>
     <string name="pref_margins">Margins and Edge</string>
     <string name="pref_edge_columns">Vertical edge columns (comma-separated)</string>
     <string name="pref_edge_background">Background mode (shade beyond edge)</string>

@@ -357,6 +357,16 @@
                 android:layout_weight="1" />
 
             <TextView
+                android:id="@+id/status_ins_ovr"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:textSize="12sp"
+                android:text="@string/status_ins"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
                 android:id="@+id/status_encoding"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

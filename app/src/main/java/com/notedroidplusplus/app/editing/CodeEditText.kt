@@ -41,6 +41,77 @@ class CodeEditText @JvmOverloads constructor(
         private set
 
     var onSelectionChange: (() -> Unit)? = null
+    var onOverwriteToggled: (() -> Unit)? = null
+
+    var caretWidth: Int = 2
+        set(value) {
+            field = value
+            invalidate()
+        }
+    var currentLineStyle: String = "highlight"
+        set(value) {
+            field = value
+            invalidate()
+        }
+    var virtualSpace: Boolean = false
+    var scrollPastEnd: Boolean = false
+        set(value) {
+            field = value
+            requestLayout()
+        }
+    var overwriteMode: Boolean = false
+        set(value) {
+            field = value
+            onOverwriteToggled?.invoke()
+            invalidate()
+        }
+    var leftPaddingDp: Int = 4
+        set(value) {
+            field = value
+            applyEditorPadding()
+        }
+    var rightPaddingDp: Int = 4
+        set(value) {
+            field = value
+            applyEditorPadding()
+        }
+
+    var edgeColumns: List<Int> = emptyList()
+        set(value) {
+            field = value
+            invalidate()
+        }
+    var edgeBackgroundMode: Boolean = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+    var showVerticalEdge: Boolean = true
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    private val edgePaint = Paint().apply { strokeWidth = 1f }
+    private val edgeShadePaint = Paint()
+
+    private fun applyEditorPadding() {
+        val density = resources.displayMetrics.density
+        val leftPx = (leftPaddingDp * density).toInt()
+        val rightPx = (rightPaddingDp * density).toInt()
+        setPadding(
+            (if (showLineNumbers) gutterWidth + 10 else 10) + leftPx,
+            paddingTop,
+            rightPx,
+            paddingBottom
+        )
+    }
+
+    fun overwriteInsert(text: String, pos: Int, typed: String): Pair<Int, String> {
+        if (!overwriteMode) return pos to typed
+        val end = (pos + typed.length).coerceAtMost(text.length)
+        return pos to typed + text.substring(pos, end)
+    }
 
     private val gutterPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val gutterBgPaint = Paint()
@@ -104,9 +175,10 @@ class CodeEditText @JvmOverloads constructor(
         } else {
             if (gutterWidth != 0) {
                 gutterWidth = 0
-                setPadding(10, paddingTop, paddingRight, paddingBottom)
+                applyEditorPadding()
             }
         }
+        if (showLineNumbers) applyEditorPadding()
         invalidate()
     }
 
@@ -233,17 +305,28 @@ class CodeEditText @JvmOverloads constructor(
             }
         }
 
+        drawVerticalEdge(canvas)
+
         val sel = selectionStart
-        if (sel >= 0) {
+        if (sel >= 0 && currentLineStyle != "none") {
             val line = gl.getLineForOffset(sel)
             val rectTop = gl.getLineTop(line) + paddingTop - scrollY
             val rectBottom = gl.getLineBottom(line) + paddingTop - scrollY
             if (rectBottom >= 0 && rectTop <= height) {
-                highlightPaint.color = highlightColor
-                canvas.drawRect(
-                    scrollX.toFloat(), rectTop.toFloat(), (scrollX + width).toFloat(),
-                    rectBottom.toFloat(), highlightPaint
-                )
+                if (currentLineStyle == "frame") {
+                    bracketPaint.color = bracketColor
+                    canvas.drawRect(
+                        (scrollX + 1).toFloat(), (rectTop + 1).toFloat(),
+                        (scrollX + width - 1).toFloat(), (rectBottom - 1).toFloat(),
+                        bracketPaint
+                    )
+                } else {
+                    highlightPaint.color = highlightColor
+                    canvas.drawRect(
+                        scrollX.toFloat(), rectTop.toFloat(), (scrollX + width).toFloat(),
+                        rectBottom.toFloat(), highlightPaint
+                    )
+                }
             }
         }
 
@@ -257,6 +340,24 @@ class CodeEditText @JvmOverloads constructor(
     }
 
     private fun lineHeight(): Int = (paint.fontMetrics.descent - paint.fontMetrics.ascent).toInt()
+
+    private fun drawVerticalEdge(canvas: Canvas) {
+        if (!showVerticalEdge || edgeColumns.isEmpty()) return
+        val charWidth = paint.measureText("8")
+        if (edgeBackgroundMode) {
+            val x = paddingLeft + (edgeColumns.min() * charWidth) - scrollX
+            edgeShadePaint.color = if (darkTheme) 0x22FFFFFF else 0x11000000
+            canvas.drawRect(x, 0f, (scrollX + width).toFloat(), height.toFloat(), edgeShadePaint)
+        } else {
+            edgePaint.color = if (darkTheme) 0x55FFFFFF.toInt() else 0x33000000
+            edgeColumns.forEach { col ->
+                val x = paddingLeft + (col * charWidth) - scrollX
+                if (x >= 0 && x <= scrollX + width) {
+                    canvas.drawLine(x, 0f, x, height.toFloat(), edgePaint)
+                }
+            }
+        }
+    }
 
     private fun drawBracketRect(canvas: Canvas, gl: Layout, line: Int, offset: Int) {
         val top = gl.getLineTop(line) + paddingTop - scrollY

@@ -45,8 +45,12 @@ import com.notedroidplusplus.app.core.SessionStore
 import com.notedroidplusplus.app.core.TextUtils
 import com.notedroidplusplus.app.databinding.ActivityMainBinding
 import com.notedroidplusplus.app.editing.CodeEditText
+import com.notedroidplusplus.app.editing.AutoComplete
 import com.notedroidplusplus.app.editing.ContentSniffer
+import com.notedroidplusplus.app.editing.EdgeColumns
+import com.notedroidplusplus.app.editing.MatchedPairs
 import com.notedroidplusplus.app.editing.MarkdownActions
+import com.notedroidplusplus.app.editing.SyntaxHighlighter
 import com.notedroidplusplus.app.files.FindInFilesActivity
 import com.notedroidplusplus.app.plugins.PluginHost
 import com.notedroidplusplus.app.plugins.PluginImportActivity
@@ -255,6 +259,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
         editor.addTextChangedListener(tw)
         editor.onSelectionChange = { updateStatus() }
+        editor.onOverwriteToggled = { updateStatus() }
+        binding.statusInsOvr.setOnClickListener {
+            editor.overwriteMode = !editor.overwriteMode
+        }
+        attachCompletionPopup()
 
         if (savedInstanceState != null) {
             restoreState(savedInstanceState)
@@ -375,15 +384,24 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.setHorizontallyScrolling(!prefs.getBoolean("wrap_lines", false))
         val fontSize = prefs.getInt("font_size", 14)
         editor.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat().coerceIn(8f, 40f))
+        applyEditingSettings()
+    }
+
+    private fun applyEditingSettings() {
+        editor.caretWidth = prefs.getInt("caret_width", 2).coerceIn(1, 3)
+        editor.currentLineStyle = prefs.getString("current_line_style", "highlight") ?: "highlight"
+        editor.virtualSpace = prefs.getBoolean("virtual_space", false)
+        editor.scrollPastEnd = prefs.getBoolean("scroll_past_end", false)
+        editor.leftPaddingDp = prefs.getInt("editor_padding_left", 4).coerceIn(0, 64)
+        editor.rightPaddingDp = prefs.getInt("editor_padding_right", 4).coerceIn(0, 64)
+        editor.showVerticalEdge = prefs.getBoolean("show_vertical_edge", true)
+        editor.edgeBackgroundMode = prefs.getBoolean("edge_background_mode", false)
+        editor.edgeColumns = EdgeColumns.parse(prefs.getString("edge_columns", null))
     }
 
     override fun onResume() {
         super.onResume()
-        applyTheme(ThemeRegistry.byName(prefs.getString("theme_name", "Default") ?: "Default"))
-        editor.showLineNumbers = prefs.getBoolean("show_line_numbers", true)
-        editor.setHorizontallyScrolling(!prefs.getBoolean("wrap_lines", false))
-        val fontSize = prefs.getInt("font_size", 14)
-        editor.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat().coerceIn(8f, 40f))
+        applyPersistedSettings()
     }
 
     // ---- PluginHost ----
@@ -476,6 +494,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         }
         override fun afterTextChanged(s: android.text.Editable?) {
             onTextChanged()
+            maybeShowCompletion()
         }
     }
 
@@ -652,6 +671,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
             s.document.language == LanguageMode.HTML
         ) == PreviewView.Mode.MARKDOWN
         binding.markdownToolbar.visibility = if (md) View.VISIBLE else View.GONE
+        binding.statusInsOvr.text = if (editor.overwriteMode) {
+            getString(R.string.status_ovr)
+        } else {
+            getString(R.string.status_ins)
+        }
     }
 
     // ---- Save / Close ----
@@ -1598,6 +1622,95 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .setPositiveButton(R.string.hash_copy) { _, _ -> copyToClipboard(msg) }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    // ---- Auto-completion + matched pairs (#46) ----
+
+    private var completionPopup: android.widget.PopupWindow? = null
+    private val autoInsertPairs: Boolean get() = prefs.getBoolean("auto_insert_pairs", false)
+    private val wordCompletionOn: Boolean get() = prefs.getBoolean("word_completion", false)
+    private val functionCompletionOn: Boolean get() = prefs.getBoolean("function_completion", false)
+    private val minCompletionChars: Int get() = prefs.getInt("word_min_chars", 3).coerceIn(1, 10)
+
+    private fun attachCompletionPopup() {
+        editor.setOnKeyListener { v, keyCode, event ->
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                when (keyCode) {
+                    android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+                    android.view.KeyEvent.KEYCODE_TAB -> {
+                        if (completionPopup?.isShowing == true) {
+                            acceptCompletion()
+                            return@setOnKeyListener true
+                        }
+                    }
+                    android.view.KeyEvent.KEYCODE_BACK -> {
+                        if (completionPopup?.isShowing == true) {
+                            dismissCompletion()
+                            return@setOnKeyListener true
+                        }
+                    }
+                }
+            }
+            v.onKeyPreIme(keyCode, event)
+        }
+    }
+
+    private fun dismissCompletion() {
+        completionPopup?.dismiss()
+        completionPopup = null
+    }
+
+    private fun acceptCompletion() {
+        val list = (completionPopup?.contentView as? android.widget.ListView)?.adapter
+            as? android.widget.ArrayAdapter<*> ?: return dismissCompletion()
+        // selected item or first
+        val lv = completionPopup?.contentView as? android.widget.ListView ?: return dismissCompletion()
+        val picked = lv.selectedItemId.toInt()
+        val item = (if (picked >= 0) lv.getItemAtPosition(picked) else lv.getItemAtPosition(0)) ?: return dismissCompletion()
+        insertCompletion(item.toString())
+    }
+
+    private fun insertCompletion(word: String) {
+        dismissCompletion()
+        val text = editor.text?.toString() ?: return
+        val pos = editor.selectionStart
+        val prefix = AutoComplete.prefixEndingAt(text, pos)
+        if (prefix.isEmpty()) return
+        val rest = word.substring(prefix.length)
+        if (rest.isNotEmpty()) editor.text?.insert(pos, rest)
+    }
+
+    /** Shows the completion popup anchored near the caret when a long-enough prefix matches. */
+    private fun maybeShowCompletion() {
+        if (!wordCompletionOn && !functionCompletionOn) return
+        val text = editor.text?.toString() ?: return
+        val pos = editor.selectionStart
+        val prefix = AutoComplete.prefixEndingAt(text, pos)
+        if (prefix.length < minCompletionChars) {
+            dismissCompletion()
+            return
+        }
+        val words = if (wordCompletionOn) AutoComplete.documentWords(text) else emptyList()
+        val keywords = if (functionCompletionOn) SyntaxHighlighter.keywordsFor(language()) else emptyList()
+        val cands = AutoComplete.candidates(prefix, words, keywords, minCompletionChars)
+        if (cands.isEmpty()) {
+            dismissCompletion()
+            return
+        }
+        val lv = android.widget.ListView(this).apply {
+            adapter = android.widget.ArrayAdapter(this@MainActivity, android.R.layout.simple_list_item_1, cands)
+            setOnItemClickListener { _, _, position, _ ->
+                insertCompletion(cands[position])
+            }
+        }
+        val pw = android.widget.PopupWindow(lv, editor.width / 2, 400, true)
+        pw.isOutsideTouchable = true
+        dismissCompletion()
+        completionPopup = pw
+        val gl = editor.layout ?: return
+        val line = gl.getLineForOffset(pos)
+        val y = (gl.getLineBottom(line) - editor.scrollY).coerceAtLeast(0)
+        pw.showAtLocation(editor, android.view.Gravity.NO_GRAVITY, editor.left, editor.top + y)
     }
 
     // ---- Menus ----

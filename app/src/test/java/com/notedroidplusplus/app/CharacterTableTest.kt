@@ -54,4 +54,11 @@ class CharacterTableTest {
         assertNull(CharacterTable.parseCodepoint(""))
         assertEquals("❤", CharacterTable.codepointToChar(0x2764))
     }
+
+    @Test
+    fun surrogate_codepoints_are_rejected() {
+        assertNull(CharacterTable.parseCodepoint("U+D800"))
+        assertNull(CharacterTable.parseCodepoint("U+DFFF"))
+        assertNull(CharacterTable.parseCodepoint("U+DC00"))
+    }
 }

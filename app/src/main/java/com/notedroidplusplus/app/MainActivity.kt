@@ -207,6 +207,17 @@ class MainActivity : AppCompatActivity(), PluginHost {
         })
         editor.setOnTouchListener { v, event ->
             scaleDetector?.onTouchEvent(event)
+            if (event.actionMasked == android.view.MotionEvent.ACTION_UP && editor.virtualSpace) {
+                // compute the tapped column and let the editor pad to it after placement
+                val gl = editor.layout
+                if (gl != null) {
+                    val x = event.x + editor.scrollX - editor.compoundPaddingLeft
+                    val y = event.y + editor.scrollY - editor.paddingTop
+                    val line = gl.getLineForVertical(y.toInt().coerceIn(0, (gl.lineCount - 1).coerceAtLeast(0)))
+                    val col = ((x / editor.paint.measureText("8")).toInt()).coerceAtLeast(0)
+                    editor.post { editor.applyVirtualSpace(col) }
+                }
+            }
             v.performClick()
             false
         }
@@ -295,12 +306,31 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 .setTitle(R.string.restore_session_title)
                 .setMessage(getString(R.string.restore_session_msg, saved.size))
                 .setPositiveButton(R.string.yes) { _, _ -> restoreSession(saved) }
-                .setNegativeButton(R.string.no) { _, _ -> { sessionStore.clear(); addTab(null, null) } }
+                .setNegativeButton(R.string.no) { _, _ -> { sessionStore.clear(); offerBackupRestore() } }
                 .setCancelable(false)
                 .show()
         } else {
-            addTab(null, null)
+            offerBackupRestore()
         }
+    }
+
+    /** Crash-recovery fallback: reopen dirty buffers saved by the periodic backup. */
+    private fun offerBackupRestore() {
+        val backups = readPeriodicBackups()
+        if (backups.isEmpty()) {
+            addTab(null, null)
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.restore_session_title)
+            .setMessage(getString(R.string.backup_restore_msg, backups.size))
+            .setPositiveButton(R.string.yes) { _, _ ->
+                backups.forEach { (name, text) -> addTab(null, text, name = name) }
+                Toast.makeText(this, R.string.backup_restored, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(R.string.no) { _, _ -> addTab(null, null) }
+            .setCancelable(false)
+            .show()
     }
 
     private fun restoreSession(saved: List<SessionStore.TabState>) {
@@ -315,6 +345,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             session.caret = st.caret
             session.bookmarks = st.bookmarks.toSet()
         }
+        sessionStore.clear()
         activateTab(0)
         refreshTabLabels()
     }
@@ -387,6 +418,10 @@ class MainActivity : AppCompatActivity(), PluginHost {
             session.bookmarks = (arr[9] as? ArrayList<Int>)?.toSet() ?: emptySet()
             session.textDirectionRtl = arr[10] as? Boolean ?: false
         }
+        if (tabs.isEmpty()) {
+            addTab(null, null)
+            return
+        }
         val act = state.getInt(KEY_ACTIVE, 0).coerceIn(0, tabs.size - 1)
         activateTab(act)
         activeSession()?.let { editor.setSelection(it.caret.coerceIn(0, it.document.text.length)) }
@@ -413,12 +448,26 @@ class MainActivity : AppCompatActivity(), PluginHost {
     /** Writes dirty unsaved buffers to app-private storage for crash recovery. */
     private fun writePeriodicBackup() {
         val dirty = tabs.filter { it.document.modified && it.document.uri == null && it.document.text.isNotEmpty() }
-        if (dirty.isEmpty()) return
-        val dir = java.io.File(filesDir, "backups").apply { mkdirs() }
+        val dir = java.io.File(filesDir, "backups")
+        if (dirty.isEmpty()) {
+            // retention: nothing dirty anymore - drop backups that are no longer needed
+            dir.listFiles()?.forEach { it.delete() }
+            return
+        }
+        dir.mkdirs()
         dirty.forEach { s ->
             val safe = s.document.fileName.map { c -> if (c.isLetterOrDigit() || c in "-_.") c else '_' }.joinToString("")
             runCatching { java.io.File(dir, "$safe.bak").writeText(s.document.text) }
         }
+    }
+
+    /** Lists recoverable periodic-backup buffers (name -> text), empty when none. */
+    private fun readPeriodicBackups(): List<Pair<String, String>> {
+        val dir = java.io.File(filesDir, "backups")
+        if (!dir.isDirectory) return emptyList()
+        return dir.listFiles { f -> f.isFile && f.extension == "bak" }
+            ?.mapNotNull { f -> runCatching { f.nameWithoutExtension to f.readText() }.getOrNull() }
+            .orEmpty()
     }
 
     private fun applyPersistedSettings() {
@@ -440,6 +489,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.showVerticalEdge = prefs.getBoolean("show_vertical_edge", true)
         applyShowSymbol()
         editor.tabSize = prefs.getInt("tab_size", 4).coerceIn(1, 16)
+        editor.autoInsertPairs = prefs.getBoolean("auto_insert_pairs", false)
         editor.highlightThresholdBytes = prefs.getInt("highlight_threshold_mb", 5).coerceIn(1, 50) * 1024L * 1024L
         startPeriodicBackup()
         editor.edgeBackgroundMode = prefs.getBoolean("edge_background_mode", false)
@@ -684,6 +734,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun applyReadOnly(s: TabSession) {
+        editor.readOnlyFlag = s.readOnly
         editor.filters = if (s.readOnly) {
             arrayOf(InputFilter { source, _, _, _, _, _ -> if (source.isNullOrEmpty()) null else "" })
         } else emptyArray()
@@ -1147,13 +1198,13 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .show()
     }
 
-    private fun transformCase(op: (String, Int, Int) -> String) {
+    private fun transformCase(kind: String, op: (String, Int, Int) -> String) {
         val text = editor.text?.toString() ?: return
         val s = editor.selectionStart.coerceAtMost(editor.selectionEnd)
         val e = editor.selectionEnd.coerceAtLeast(editor.selectionStart)
         val replaced = op(text, s, e)
         if (replaced != text) {
-            recordAction(MacroRecorder.Action.TransformCase("upper", s, e))
+            recordAction(MacroRecorder.Action.TransformCase(kind, s, e))
         }
         setEditorText(replaced)
         editor.setSelection(s, e)
@@ -1561,7 +1612,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             item(getString(R.string.macro_save)) { stopMacroRecording(save = true) }
             val saved = macroStore.list()
             if (saved.isNotEmpty()) {
-                menu.add("—").isEnabled = false
+                menu.add(getString(R.string.menu_separator)).isEnabled = false
                 saved.forEach { m ->
                     item("▶ ${m.name}") { playbackMacro(m.actions) }
                 }
@@ -1642,6 +1693,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private val monitorHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var monitorRunnable: Runnable? = null
 
+    /** The session whose monitoring toggle started the poll loop (not necessarily active). */
+    private var monitoredSession: TabSession? = null
+
     private fun toggleMonitoring() {
         val s = activeSession() ?: return
         if (s.document.uri == null) {
@@ -1651,36 +1705,52 @@ class MainActivity : AppCompatActivity(), PluginHost {
         s.monitoring = !s.monitoring
         if (s.monitoring) {
             Toast.makeText(this, R.string.monitoring_on, Toast.LENGTH_LONG).show()
-            startMonitoring()
+            startMonitoring(s)
         } else {
             stopMonitoring()
         }
     }
 
-    private fun startMonitoring() {
+    private fun startMonitoring(session: TabSession) {
         stopMonitoring()
+        monitoredSession = session
         val intervalSec = prefs.getInt("monitoring_interval", 2).coerceIn(1, 60)
         val runnable = object : Runnable {
             override fun run() {
-                val s = activeSession()
-                if (s != null && s.monitoring && s.document.uri != null) {
+                val s = monitoredSession
+                if (s != null && s.monitoring && s.document.uri != null && tabs.contains(s)) {
                     thread(name = "monitor-check") {
                         val uri = Uri.parse(s.document.uri!!)
                         val changed = runCatching {
-                            val loaded = files.load(uri)
-                            loaded.text != editor.text?.toString()
+                            files.load(uri).text != s.document.text
                         }.getOrDefault(false)
                         runOnUiThread {
-                            val cur = activeSession()
-                            if (changed && cur != null && cur.monitoring && cur === s) {
-                                if (cur.document.modified) {
-                                    Toast.makeText(this@MainActivity, R.string.monitoring_changed, Toast.LENGTH_LONG).show()
-                                } else {
-                                    reloadActive()
-                                    Toast.makeText(this@MainActivity, R.string.monitoring_reloaded, Toast.LENGTH_SHORT).show()
+                            if (isFinishing || isDestroyed) {
+                                stopMonitoring()
+                            } else {
+                                if (changed && s.monitoring) {
+                                    if (s.document.modified) {
+                                        Toast.makeText(this@MainActivity, R.string.monitoring_changed, Toast.LENGTH_LONG).show()
+                                    } else if (s === activeSession()) {
+                                        reloadActive()
+                                        Toast.makeText(this@MainActivity, R.string.monitoring_reloaded, Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        // monitored but inactive: refresh the buffer in place
+                                        runCatching {
+                                            val loaded = files.load(uri)
+                                            s.document = s.document.copy(
+                                                text = loaded.text,
+                                                encoding = loaded.charset.name(),
+                                                lineEnding = loaded.lineEnding,
+                                                hasBom = loaded.hadBom,
+                                                modified = false
+                                            )
+                                            refreshTabLabels()
+                                        }
+                                    }
                                 }
+                                monitorRunnable?.let { monitorHandler.postDelayed(it, intervalSec * 1000L) }
                             }
-                            monitorRunnable?.let { monitorHandler.postDelayed(it, intervalSec * 1000L) }
                         }
                     }
                 } else {
@@ -1695,6 +1765,14 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun stopMonitoring() {
         monitorRunnable?.let { monitorHandler.removeCallbacks(it) }
         monitorRunnable = null
+        monitoredSession = null
+    }
+
+    override fun onDestroy() {
+        stopMonitoring()
+        backupRunnable?.let { backupHandler.removeCallbacks(it) }
+        backupRunnable = null
+        super.onDestroy()
     }
 
     // ---- Summary (#41) ----
@@ -1837,7 +1915,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
             .setTitle(getString(R.string.search_results_title, hits.size))
             .setItems(labels.toTypedArray()) { _, which ->
                 val hit = hits[which]
-                val idx = tabs.indexOfFirst { it.document.fileName == hit.file }
+                val idx = tabs.indexOfFirst { it.document.uri != null && it.document.uri == hit.uri }
+                    .takeIf { it >= 0 } ?: tabs.indexOfFirst { it.document.fileName == hit.file }
                 if (idx >= 0) {
                     activateTab(idx)
                     val offset = TextUtils.lineIndexToOffset(tabs[idx].document.text, (hit.line - 1).coerceAtLeast(0))
@@ -2089,16 +2168,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun showConvertCaseMenu() = popup {
-        item(getString(R.string.action_uppercase)) { transformCase { t, s, e -> TextUtils.toUpper(t, s, e) } }
-        item(getString(R.string.action_lowercase)) { transformCase { t, s, e -> TextUtils.toLower(t, s, e) } }
-        item(getString(R.string.action_titlecase)) { transformCase { t, s, e -> TextUtils.titleCase(t, s, e) } }
-        item(getString(R.string.op_proper)) { transformCase { t, s, e -> TextUtils.properCase(t, s, e, blend = false) } }
-        item(getString(R.string.op_proper_blend)) { transformCase { t, s, e -> TextUtils.properCase(t, s, e, blend = true) } }
-        item(getString(R.string.op_sentence)) { transformCase { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = false) } }
-        item(getString(R.string.op_sentence_blend)) { transformCase { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = true) } }
-        item(getString(R.string.action_toggle_case)) { transformCase { t, s, e -> TextUtils.toggleCase(t, s, e) } }
-        item(getString(R.string.op_invert)) { transformCase { t, s, e -> TextUtils.invertCase(t, s, e) } }
-        item(getString(R.string.op_random_case)) { transformCase { t, s, e -> TextUtils.randomCase(t, s, e, java.util.Random()) } }
+        item(getString(R.string.action_uppercase)) { transformCase("upper") { t, s, e -> TextUtils.toUpper(t, s, e) } }
+        item(getString(R.string.action_lowercase)) { transformCase("lower") { t, s, e -> TextUtils.toLower(t, s, e) } }
+        item(getString(R.string.action_titlecase)) { transformCase("title") { t, s, e -> TextUtils.titleCase(t, s, e) } }
+        item(getString(R.string.op_proper)) { transformCase("title") { t, s, e -> TextUtils.properCase(t, s, e, blend = false) } }
+        item(getString(R.string.op_proper_blend)) { transformCase("title") { t, s, e -> TextUtils.properCase(t, s, e, blend = true) } }
+        item(getString(R.string.op_sentence)) { transformCase("lower") { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = false) } }
+        item(getString(R.string.op_sentence_blend)) { transformCase("lower") { t, s, e -> TextUtils.sentenceCase(t, s, e, blend = true) } }
+        item(getString(R.string.action_toggle_case)) { transformCase("toggle") { t, s, e -> TextUtils.toggleCase(t, s, e) } }
+        item(getString(R.string.op_invert)) { transformCase("toggle") { t, s, e -> TextUtils.invertCase(t, s, e) } }
+        item(getString(R.string.op_random_case)) { transformCase("upper") { t, s, e -> TextUtils.randomCase(t, s, e, java.util.Random()) } }
     }
 
     private fun showBlankOpsMenu() = popup {

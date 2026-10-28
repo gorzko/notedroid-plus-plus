@@ -118,16 +118,6 @@
         <item>frame</item>
     </string-array>
 
-    <string-array name="wrap_style_names">
-        <item>@string/pref_wrap_default</item>
-        <item>@string/pref_wrap_aligned</item>
-        <item>@string/pref_wrap_indent</item>
-    </string-array>
-    <string-array name="wrap_style_values">
-        <item>default</item>
-        <item>aligned</item>
-        <item>indent</item>
-    </string-array>
 
     <string-array name="language_mode_names">
         <item>NORMAL_TEXT</item>

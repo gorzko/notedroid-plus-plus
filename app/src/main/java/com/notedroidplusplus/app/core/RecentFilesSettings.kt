@@ -11,7 +11,7 @@ object RecentFilesSettings {
 
     enum class DisplayMode { NAME_ONLY, FULL_PATH }
 
-    /** Parses "80, 100 72" style column lists. */
+    /** Parses the max-entries setting (single integer), clamped to 1..MAX_LIMIT. */
     fun parseMax(raw: String?, fallback: Int = DEFAULT_MAX): Int {
         val n = raw?.trim()?.toIntOrNull() ?: fallback
         return n.coerceIn(1, MAX_LIMIT)

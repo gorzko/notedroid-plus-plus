@@ -69,6 +69,43 @@ class BookmarksTest {
         assertEquals("one\nthree", Bookmarks.removeLines(text, "\n", setOf(1, 3)))
         assertEquals(text, Bookmarks.removeLines(text, "\n", emptySet()))
     }
+
+    @Test
+    fun remove_lines_drops_terminating_eol_and_preserves_trailing_newline() {
+        // cutting the last content line keeps the document's final EOL
+        assertEquals("one\nthree", Bookmarks.removeLines("one\ntwo\nthree", "\n", setOf(1)))
+        // bookmark on the phantom line after a trailing EOL removes just that EOL
+        assertEquals("one\ntwo\nthree", Bookmarks.removeLines("one\ntwo\nthree\n", "\n", setOf(3)))
+        assertEquals("one\ntwo", Bookmarks.removeLines("one\ntwo\nthree", "\n", setOf(2)))
+        assertEquals("", Bookmarks.removeLines("one\n", "\n", setOf(0)))
+    }
+
+    @Test
+    fun findAll_reports_offsets_in_original_crlf_text() {
+        val text = "line1\r\nneedle here\r\nlast needle"
+        val hits = com.notedroidplusplus.app.search.findAll(
+            text, com.notedroidplusplus.app.search.FindOptions(query = "needle")
+        )
+        assertEquals(2, hits.size)
+        assertEquals(text.indexOf("needle"), hits[0].start)
+        assertEquals(text.lastIndexOf("needle"), hits[1].start)
+        // the marked span covers exactly the match in the ORIGINAL text
+        assertEquals("needle", text.substring(hits[0].start, hits[0].start + 6))
+    }
+
+    @Test
+    fun findAll_honors_extended_mode() {
+        val text = "a\nb"
+        val plain = com.notedroidplusplus.app.search.findAll(
+            text, com.notedroidplusplus.app.search.FindOptions(query = "a\\nb")
+        )
+        assertTrue(plain.isEmpty())
+        val extended = com.notedroidplusplus.app.search.findAll(
+            text, com.notedroidplusplus.app.search.FindOptions(query = "a\\nb", extended = true)
+        )
+        assertEquals(1, extended.size)
+        assertEquals(0, extended[0].start)
+    }
 }
 
 class ShowSymbolTest {

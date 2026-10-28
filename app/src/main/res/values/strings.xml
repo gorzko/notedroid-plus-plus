@@ -186,15 +186,10 @@
     <string name="pref_new_doc_language">Default language</string>
     <string name="pref_editing">Editing</string>
     <string name="pref_caret_width">Caret width (px)</string>
-    <string name="pref_caret_blink">Caret blink rate (ms; 0 = off)</string>
     <string name="pref_current_line_style">Current line indicator</string>
     <string name="pref_line_style_none">None</string>
     <string name="pref_line_style_highlight">Highlight</string>
     <string name="pref_line_style_frame">Frame</string>
-    <string name="pref_wrap_style">Line wrap style</string>
-    <string name="pref_wrap_default">Default</string>
-    <string name="pref_wrap_aligned">Aligned</string>
-    <string name="pref_wrap_indent">Indent</string>
     <string name="pref_virtual_space">Enable virtual space (caret beyond end of line)</string>
     <string name="pref_scroll_past_end">Scroll beyond last line</string>
     <string name="pref_performance">Performance</string>
@@ -220,12 +215,6 @@
 
     <string name="action_character_panel">Character Panel</string>
     <string name="char_panel_title">Character Panel — %1$s</string>
-    <string name="char_col_value">Value</string>
-    <string name="char_col_hex">Hex</string>
-    <string name="char_col_char">Char</string>
-    <string name="char_col_html_name">HTML Name</string>
-    <string name="char_col_html_dec">HTML Decimal</string>
-    <string name="char_col_html_hex">HTML Hex</string>
     <string name="char_unicode_hint">U+XXXX codepoint</string>
     <string name="char_unicode_insert">Insert</string>
     <string name="char_unicode_invalid">Invalid codepoint</string>
@@ -341,7 +330,6 @@
     <string name="pref_new_doc_title">New Document</string>
     <string name="pref_indent_title">Indentation</string>
     <string name="pref_tab_size">Tab size</string>
-    <string name="pref_replace_spaces">Replace tabs with spaces</string>
     <string name="pref_searching_title">Searching</string>
     <string name="pref_autofill_find">Auto-fill find field from selection</string>
     <string name="pref_find_max_chars">Max chars copied to find field</string>
@@ -350,4 +338,6 @@
     <string name="pref_periodic_backup">Periodic backup of dirty buffers</string>
     <string name="pref_periodic_backup_min">Backup interval (minutes)</string>
     <string name="backup_restored">Backed-up buffers restored</string>
+    <string name="backup_restore_msg">Restore %1$d unsaved buffer(s) from the periodic backup?</string>
+    <string name="menu_separator">—</string>
 </resources>

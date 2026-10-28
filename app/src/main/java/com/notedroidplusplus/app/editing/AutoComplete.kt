@@ -17,12 +17,8 @@ object AutoComplete {
     /** Unique document words (identifier-like tokens), capped for large docs. */
     fun documentWords(text: String, cap: Int = 5000): List<String> {
         val seen = LinkedHashSet<String>()
-        for (m in WORD_DELIMS.findAll(text)) {
-            // findAll returns delimiters; use split instead below
-        }
         text.split(WORD_DELIMS).forEach { w -> if (w.isNotEmpty()) seen.add(w) }
-        if (seen.size > cap) return seen.toList().take(cap)
-        return seen.toList()
+        return seen.toList().take(cap)
     }
 
     /**

@@ -56,13 +56,6 @@
             app:min="1"
             android:max="3"
             app:showSeekBarValue="true" />
-        <SeekBarPreference
-            app:key="caret_blink"
-            app:title="@string/pref_caret_blink"
-            app:defaultValue="500"
-            app:min="0"
-            android:max="2000"
-            app:showSeekBarValue="true" />
         <ListPreference
             app:key="current_line_style"
             app:title="@string/pref_current_line_style"
@@ -160,10 +153,6 @@
             app:min="1"
             android:max="16"
             app:showSeekBarValue="true" />
-        <SwitchPreferenceCompat
-            app:key="replace_tabs_spaces"
-            app:title="@string/pref_replace_spaces"
-            app:defaultValue="false" />
     </PreferenceCategory>
 
     <PreferenceCategory app:title="@string/pref_searching_title">

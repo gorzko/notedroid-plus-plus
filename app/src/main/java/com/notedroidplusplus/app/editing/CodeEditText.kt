@@ -96,6 +96,14 @@ class CodeEditText @JvmOverloads constructor(
             field = value
             requestLayout()
         }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        if (scrollPastEnd && layout != null) {
+            val extra = (height * 0.8f).toInt()
+            setMeasuredDimension(measuredWidth, measuredHeight + extra)
+        }
+    }
     var overwriteMode: Boolean = false
         set(value) {
             field = value
@@ -144,10 +152,31 @@ class CodeEditText @JvmOverloads constructor(
         )
     }
 
-    fun overwriteInsert(text: String, pos: Int, typed: String): Pair<Int, String> {
-        if (!overwriteMode) return pos to typed
-        val end = (pos + typed.length).coerceAtMost(text.length)
-        return pos to typed + text.substring(pos, end)
+    /**
+     * Virtual space: clamps touch-to-caret placement at end-of-line by
+     * padding the line with spaces up to the tapped column instead of
+     * snapping back to the last character.
+     */
+    fun virtualSpaceFor(text: String, line: Int, targetColumn: Int): Int {
+        if (!virtualSpace) return -1
+        val lineStart = gl_lineStart(text, line)
+        val lineEnd = text.indexOf('\n', lineStart).let { if (it < 0) text.length else it }
+        val contentEnd = if (lineEnd > lineStart && text[lineEnd - 1] == '\r') lineEnd - 1 else lineEnd
+        val currentLen = contentEnd - lineStart
+        if (targetColumn <= currentLen) return -1
+        val spaces = buildString { repeat(targetColumn - currentLen) { append(' ') } }
+        editableText?.insert(contentEnd, spaces)
+        return contentEnd + spaces.length
+    }
+
+    private fun gl_lineStart(text: String, line: Int): Int {
+        var idx = 0
+        repeat(line) {
+            val next = text.indexOf('\n', idx)
+            if (next < 0) return text.length
+            idx = next + 1
+        }
+        return idx
     }
 
     private val gutterPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -169,6 +198,7 @@ class CodeEditText @JvmOverloads constructor(
         gravity = Gravity.TOP or Gravity.START
         typeface = android.graphics.Typeface.MONOSPACE
         setBackgroundColor(0xFFFFFFFF.toInt())
+        setCustomSelectionActionModeCallback(null)
         addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -179,6 +209,80 @@ class CodeEditText @JvmOverloads constructor(
         viewTreeObserver.addOnScrollChangedListener { invalidate() }
         post { updateGutter() }
     }
+
+    // ---- Typing interception: matched pairs + overwrite mode (#46/#47) ----
+
+    var autoInsertPairs: Boolean = false
+    var onTypedIntercepted: (() -> Unit)? = null
+
+    override fun onCreateInputConnection(outAttrs: android.view.inputmethod.EditorInfo): android.view.inputmethod.InputConnection? {
+        val ic = super.onCreateInputConnection(outAttrs) ?: return null
+        if (!autoInsertPairs && !overwriteMode) return ic
+        return PairAwareInputConnection(ic, this)
+    }
+
+    /** Set by applyTypedText when the returned text is a deliberate pair/tag insertion. */
+    internal var lastInsertWasPair: Boolean = false
+
+    /** Applies pair/overwrite decisions for a single typed [text] at [pos]. */
+    internal fun applyTypedText(text: String, pos: Int): String? {
+        lastInsertWasPair = false
+        if (text.length == 1) {
+            val typed = text[0]
+            // matched-pair logic
+            if (autoInsertPairs) {
+                when (val r = MatchedPairs.onTyped(editableText?.toString() ?: "", pos, typed, autoInsert = true)) {
+                    is MatchedPairs.Result.Insert -> {
+                        if (r.text.length == 2) {
+                            lastInsertWasPair = true
+                            return r.text
+                        }
+                    }
+                    MatchedPairs.Result.StepOver -> {
+                        if (pos < (editableText?.length ?: 0)) setSelection(pos + 1)
+                        return ""
+                    }
+                    MatchedPairs.Result.None -> { /* plain insert below */ }
+                }
+            }
+            // HTML/XML tag closer: '>' right after a complete opener inserts </name>
+            if (typed == '>' && (language == LanguageMode.HTML || language == LanguageMode.XML)) {
+                val buf = editableText?.toString() ?: ""
+                val closer = MatchedPairs.tagCloserFor(buf, pos)
+                if (closer != null) {
+                    lastInsertWasPair = true
+                    return closer
+                }
+            }
+        }
+        return if (text.isEmpty()) null else text
+    }
+
+    private class PairAwareInputConnection(
+        private val delegate: android.view.inputmethod.InputConnection,
+        private val editor: CodeEditText
+    ) : android.view.inputmethod.InputConnection by delegate {
+
+        override fun commitText(text: CharSequence, newCursorPosition: Int): Boolean {
+            if (editor.readOnlyFlag) return delegate.commitText(text, newCursorPosition)
+            val pos = editor.selectionStart.coerceAtLeast(0)
+            val replacement = editor.applyTypedText(text.toString(), pos)
+            return when {
+                replacement == null -> delegate.commitText(text, newCursorPosition)
+                replacement.isEmpty() -> true
+                else -> {
+                    val committed = delegate.commitText(replacement, newCursorPosition)
+                    if (committed && editor.overwriteMode && !editor.lastInsertWasPair) {
+                        // overwrite: remove the characters the insert just covered
+                        delegate.deleteSurroundingText(0, replacement.length)
+                    }
+                    committed
+                }
+            }
+        }
+    }
+
+    var readOnlyFlag: Boolean = false
 
     fun applyEditorTheme(theme: EditorTheme) {
         darkTheme = theme.dark
@@ -318,8 +422,19 @@ class CodeEditText @JvmOverloads constructor(
         invalidate()
     }
 
+    /** Virtual space: pads with spaces when a tap lands beyond end-of-line. */
+    fun applyVirtualSpace(tappedColumn: Int) {
+        if (!virtualSpace) return
+        val text = editableText?.toString() ?: return
+        val gl = layout ?: return
+        val line = gl.getLineForOffset(selectionStart)
+        val newOffset = virtualSpaceFor(text, line, tappedColumn)
+        if (newOffset >= 0) setSelection(newOffset)
+    }
+
     override fun onDraw(canvas: Canvas) {
         val gl = layout ?: return
+        drawCaretWidth(canvas)
 
         if (showLineNumbers) {
             val top = scrollY
@@ -380,7 +495,20 @@ class CodeEditText @JvmOverloads constructor(
         super.onDraw(canvas)
     }
 
-    private fun lineHeight(): Int = (paint.fontMetrics.descent - paint.fontMetrics.ascent).toInt()
+    /** Draws an extra caret-width bar (Notepad++ caret width 1-3 px) at the caret column. */
+    private fun drawCaretWidth(canvas: Canvas) {
+        if (caretWidth <= 2 || !isFocused) return
+        val gl = layout ?: return
+        val pos = selectionStart
+        if (pos < 0) return
+        val line = gl.getLineForOffset(pos)
+        val cx = gl.getPrimaryHorizontal(pos) - scrollX + compoundPaddingLeft
+        val top = gl.getLineTop(line) + paddingTop - scrollY
+        val bottom = gl.getLineBottom(line) + paddingTop - scrollY
+        if (bottom < 0 || top > height) return
+        val barPaint = Paint().apply { color = currentTextColor }
+        canvas.drawRect(cx, top.toFloat(), cx + (caretWidth - 2), bottom.toFloat(), barPaint)
+    }
 
     /** Draws bookmark circles in the gutter for bookmarked visible lines. */
     private fun drawBookmarks(canvas: Canvas, gl: Layout) {
@@ -466,6 +594,8 @@ class CodeEditText @JvmOverloads constructor(
         canvas.drawPath(path, paint)
         paint.style = Paint.Style.FILL
     }
+
+    private fun lineHeight(): Int = (paint.fontMetrics.descent - paint.fontMetrics.ascent).toInt()
 
     private fun drawVerticalEdge(canvas: Canvas) {
         if (!showVerticalEdge || edgeColumns.isEmpty()) return

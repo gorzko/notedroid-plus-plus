@@ -13,39 +13,90 @@ data class SearchHit(
 /**
  * Finds all matches of [opts] in [text], line by line, attributing each hit to
  * [file]/[uri]. Pure Kotlin; used by both current-document and directory search.
+ * [start] is an offset into the ORIGINAL text (CRLF preserved), suitable for
+ * in-buffer span marking. Honors Extended mode via [resolved].
  */
-fun findAll(text: String, opts: FindOptions, file: String = "", uri: String? = null): List<SearchHit> {
+fun findAll(text: String, optsIn: FindOptions, file: String = "", uri: String? = null): List<SearchHit> {
+    val opts = optsIn.resolved()
     val hits = mutableListOf<SearchHit>()
     if (opts.query.isEmpty()) return hits
-    val normalized = text.replace("\r\n", "\n").replace('\r', '\n')
+    // Multi-line queries (extended \n or multi-line regex) need a full-text scan;
+    // the line-based loop below cannot match across line boundaries.
+    if (!opts.regex && opts.query.contains('\n')) {
+        return findAllMultiLine(text, opts, file, uri)
+    }
     var lineStart = 0
     var line = 1
     var i = 0
-    while (i <= normalized.length) {
-        if (i == normalized.length || normalized[i] == '\n') {
-            val lineText = normalized.substring(lineStart, i)
+    while (i <= text.length) {
+        val atEol = i == text.length || text[i] == '\n'
+        if (atEol) {
+            // line excludes the terminator; strip a trailing CR for matching/display
+            val rawLineEnd = i
+            val lineText = text.substring(lineStart, rawLineEnd)
+            val matchText = if (lineText.endsWith("\r")) lineText.dropLast(1) else lineText
             var col = 0
-            while (col < lineText.length) {
+            while (col < matchText.length) {
                 val at = if (opts.regex) {
                     runCatching {
                         val re = if (opts.matchCase) Regex(opts.query) else Regex(opts.query, RegexOption.IGNORE_CASE)
-                        re.find(lineText, col)?.range
+                        re.find(matchText, col)?.range
                     }.getOrNull()
                 } else {
-                    val idx = lineText.indexOf(opts.query, col, ignoreCase = !opts.matchCase)
+                    val idx = matchText.indexOf(opts.query, col, ignoreCase = !opts.matchCase)
                     if (idx < 0) null else idx until (idx + opts.query.length)
                 }
                 if (at == null) break
-                if (!opts.wholeWord || isWholeWordAt(lineText, at.first, at.last - at.first + 1)) {
-                    hits.add(SearchHit(file, uri, line, at.first + 1, lineText.trim(), lineStart + at.first))
+                if (!opts.wholeWord || isWholeWordAt(matchText, at.first, at.last - at.first + 1)) {
+                    hits.add(
+                        SearchHit(
+                            file = file,
+                            uri = uri,
+                            line = line,
+                            column = at.first + 1,
+                            lineText = matchText.trim(),
+                            start = lineStart + at.first
+                        )
+                    )
                 }
                 col = if (at.isEmpty()) at.first + 1 else at.last + 1
             }
-            if (i == normalized.length) break
+            if (i == text.length) break
             lineStart = i + 1
             line++
         }
         i++
+    }
+    return hits
+}
+
+/** Full-text scan for queries that span lines; line/column derived per hit. */
+private fun findAllMultiLine(text: String, opts: FindOptions, file: String, uri: String?): List<SearchHit> {
+    val hits = mutableListOf<SearchHit>()
+    var i = 0
+    val lineStarts = mutableListOf(0)
+    text.forEachIndexed { idx, c -> if (c == '\n') lineStarts.add(idx + 1) }
+    while (i <= text.length) {
+        val idx = text.indexOf(opts.query, i, ignoreCase = !opts.matchCase)
+        if (idx < 0) break
+        val end = idx + opts.query.length
+        if (!opts.wholeWord || isWholeWordAt(text, idx, opts.query.length)) {
+            var line = 0
+            while (line + 1 < lineStarts.size && lineStarts[line + 1] <= idx) line++
+            val col = idx - lineStarts[line]
+            val lineEnd = text.indexOf('\n', idx).let { if (it < 0) text.length else it }
+            hits.add(
+                SearchHit(
+                    file = file,
+                    uri = uri,
+                    line = line + 1,
+                    column = col + 1,
+                    lineText = text.substring(lineStarts[line], lineEnd).trim(),
+                    start = idx
+                )
+            )
+        }
+        i = if (end == idx) idx + 1 else end
     }
     return hits
 }

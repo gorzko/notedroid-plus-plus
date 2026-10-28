@@ -73,12 +73,13 @@ object CharacterTable {
             )
         }
 
-    /** Parses a U+XXXX (or bare hex) input into a codepoint; null when invalid. */
+    /** Parses a U+XXXX (or bare hex) input into a codepoint; null when invalid (incl. surrogates). */
     fun parseCodepoint(input: String): Int? {
         var raw = input.trim()
         if (raw.startsWith("U+") || raw.startsWith("u+")) raw = raw.substring(2)
         if (raw.isEmpty() || raw.length > 6) return null
         val v = raw.toIntOrNull(16) ?: return null
+        if (v in 0xD800..0xDFFF) return null
         return if (v in 0..0x10FFFF) v else null
     }
 

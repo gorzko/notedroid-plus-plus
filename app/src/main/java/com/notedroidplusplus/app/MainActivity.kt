@@ -52,6 +52,8 @@ import com.notedroidplusplus.app.editing.ContentSniffer
 import com.notedroidplusplus.app.editing.EdgeColumns
 import com.notedroidplusplus.app.editing.MatchedPairs
 import com.notedroidplusplus.app.editing.ShowSymbolFlags
+import com.notedroidplusplus.app.editing.UserDefinedLanguage
+import com.notedroidplusplus.app.editing.UserDefinedLanguageStore
 import com.notedroidplusplus.app.search.resolved
 import com.notedroidplusplus.app.editing.MarkdownActions
 import com.notedroidplusplus.app.editing.SyntaxHighlighter
@@ -74,6 +76,7 @@ import com.notedroidplusplus.app.tools.HashTool
 import com.notedroidplusplus.app.tools.JsonTool
 import com.notedroidplusplus.app.tools.XmlTool
 import kotlin.concurrent.thread
+import java.io.File
 import java.nio.charset.Charset
 
 class MainActivity : AppCompatActivity(), PluginHost {
@@ -91,6 +94,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private lateinit var pluginRegistry: PluginRegistry
     private lateinit var recentFiles: RecentFiles
     private lateinit var sessionStore: SessionStore
+    private lateinit var udlStore: UserDefinedLanguageStore
+    private var pendingUdlExportName: String? = null
     private var scaleDetector: ScaleGestureDetector? = null
 
     data class TabSession(
@@ -105,7 +110,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
         var textDirectionRtl: Boolean = false,
         val changeHistory: ChangeHistory = ChangeHistory(),
         var baselineText: String = "",
-        var pinned: Boolean = false
+        var pinned: Boolean = false,
+        var udlName: String? = null
     )
 
     private val tabs = mutableListOf<TabSession>()
@@ -169,6 +175,30 @@ class MainActivity : AppCompatActivity(), PluginHost {
             openUriAtLine(Uri.parse(uri), line)
         }
 
+    private val udlImportLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri ?: return@registerForActivityResult
+            importUdl(uri)
+        }
+
+    private val udlExportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            uri ?: return@registerForActivityResult
+            val name = pendingUdlExportName ?: return@registerForActivityResult
+            pendingUdlExportName = null
+            val udl = udlStore.findByName(name)
+            if (udl == null) {
+                Toast.makeText(this, R.string.udl_not_found, Toast.LENGTH_SHORT).show()
+                return@registerForActivityResult
+            }
+            try {
+                contentResolver.openOutputStream(uri)?.use { it.write(udl.toJson().toByteArray(Charsets.UTF_8)) }
+                Toast.makeText(this, R.string.udl_exported, Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, getString(R.string.udl_export_failed, e.message), Toast.LENGTH_LONG).show()
+            }
+        }
+
     private fun openUriAtLine(uri: Uri, line: Int) {
         try {
             runCatching {
@@ -200,6 +230,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         pluginRegistry = PluginRegistry(this)
         recentFiles = RecentFiles(this)
         sessionStore = SessionStore(this)
+        udlStore = UserDefinedLanguageStore(File(getDir("udl", MODE_PRIVATE), "languages"))
         scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 val size = editor.textSize / resources.displayMetrics.scaledDensity
@@ -748,6 +779,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
             editor.removeTextChangedListener(tw)
             editor.setText(loaded.text)
             editor.language = language
+            val reuseUdl = udlForFileName(fileName)
+            current.udlName = reuseUdl?.name
+            editor.udl = reuseUdl
             editor.setSelection(0)
             editor.addTextChangedListener(tw)
             refreshTabLabels()
@@ -761,7 +795,21 @@ class MainActivity : AppCompatActivity(), PluginHost {
             lineEnding = loaded.lineEnding,
             hasBom = loaded.hadBom
         )
+        session.udlName = udlForFileName(fileName)?.name
+        session.udlName?.let { editor.udl = udlStore.findByName(it) }
         return session
+    }
+
+    /**
+     * UDL extension precedence (#50): the built-in wins unless the user explicitly
+     * picked the UDL, so a UDL only auto-applies when no built-in claims the extension.
+     */
+    private fun udlForFileName(fileName: String): UserDefinedLanguage? {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        if (ext.isEmpty()) return null
+        val builtinClaims = LanguageMode.entries.any { ext in it.extensions }
+        if (builtinClaims) return null
+        return udlStore.forExtension(ext)
     }
 
     private fun activateTab(index: Int) {
@@ -775,6 +823,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.removeTextChangedListener(tw)
         editor.setText(s.document.text)
         editor.language = s.document.language
+        editor.udl = s.udlName?.let { udlStore.findByName(it) }
         editor.setSelection(s.caret.coerceIn(0, s.document.text.length))
         editor.addTextChangedListener(tw)
         editor.bookmarks = s.bookmarks
@@ -922,7 +971,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
             "\r" -> "Mac (CR)"
             else -> "Unix (LF)"
         }
-        binding.statusLanguage.text = s?.document?.language?.displayName ?: ""
+        binding.statusLanguage.text = s?.udlName ?: s?.document?.language?.displayName ?: ""
         val md = s != null && previewMode == null && previewModeMemo.modeFor(
             text,
             s.document.language == LanguageMode.MARKDOWN,
@@ -1010,7 +1059,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 uri = uri.toString(),
                 fileName = files.displayName(uri),
                 modified = false,
-                language = LanguageMode.fromFileName(files.displayName(uri)),
+                language = ContentSniffer.detectWithFileName(files.displayName(uri), editor.text.toString()),
                 hasBom = s.document.hasBom
             )
             editor.language = s.document.language
@@ -1712,9 +1761,134 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun setLanguage(mode: LanguageMode) {
         activeSession()?.let {
             it.document = it.document.copy(language = mode)
+            it.udlName = null
+            editor.udl = null
             editor.language = mode
             updateStatus()
         }
+    }
+
+    private fun setUdl(udl: UserDefinedLanguage) {
+        val s = activeSession() ?: return
+        s.udlName = udl.name
+        editor.udl = udl
+        updateStatus()
+    }
+
+    // ---- User Defined Languages (#50) ----
+
+    private fun importUdl(uri: Uri) {
+        try {
+            val text = contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                ?: throw IllegalStateException("Empty stream")
+            val udl = UserDefinedLanguage.fromJson(text)
+            udlStore.save(udl)
+            Toast.makeText(this, getString(R.string.udl_imported, udl.name), Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, getString(R.string.udl_import_failed, e.message), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun showUdlExportPicker() {
+        val list = udlStore.list()
+        if (list.isEmpty()) {
+            Toast.makeText(this, R.string.udl_none_defined, Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.udl_export)
+            .setItems(list.map { it.name }.toTypedArray()) { _, which ->
+                pendingUdlExportName = list[which].name
+                udlExportLauncher.launch("${list[which].name}.udl.json")
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showUdlDeleteDialog() {
+        val list = udlStore.list()
+        if (list.isEmpty()) {
+            Toast.makeText(this, R.string.udl_none_defined, Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.udl_delete)
+            .setItems(list.map { it.name }.toTypedArray()) { _, which ->
+                val name = list[which].name
+                udlStore.delete(name)
+                if (activeSession()?.udlName?.equals(name, ignoreCase = true) == true) {
+                    activeSession()!!.udlName = null
+                    editor.udl = null
+                    updateStatus()
+                }
+                Toast.makeText(this, getString(R.string.udl_deleted, name), Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showUdlDefineDialog(existing: UserDefinedLanguage?) {
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val container = android.widget.ScrollView(this)
+        val box = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        fun field(hint: String, initial: String): android.widget.EditText {
+            val e = android.widget.EditText(this)
+            e.hint = hint
+            e.setText(initial)
+            e.inputType = android.text.InputType.TYPE_CLASS_TEXT
+            box.addView(e)
+            return e
+        }
+        val nameF = field(getString(R.string.udl_field_name), existing?.name ?: "")
+        val extF = field(getString(R.string.udl_field_ext), existing?.extensions?.joinToString(" ") ?: "")
+        val kwF = field(getString(R.string.udl_field_keywords), existing?.keywords?.flatten()?.joinToString(" ") ?: "")
+        val typesF = field(getString(R.string.udl_field_types), existing?.types?.joinToString(" ") ?: "")
+        val lineCmF = field(getString(R.string.udl_field_line_comments), existing?.lineComments?.joinToString(" ") ?: "")
+        val blockOpenF = field(getString(R.string.udl_field_block_open), existing?.blockComment?.first ?: "")
+        val blockCloseF = field(getString(R.string.udl_field_block_close), existing?.blockComment?.second ?: "")
+        val stringsF = field(getString(R.string.udl_field_strings), existing?.stringDelimiters?.joinToString("") ?: "")
+        val opsF = field(getString(R.string.udl_field_operators), existing?.operators?.joinToString(" ") ?: "")
+        val ciChk = android.widget.CheckBox(this).apply {
+            text = getString(R.string.udl_field_case_insensitive)
+            isChecked = existing?.caseInsensitive ?: false
+        }
+        box.addView(ciChk)
+        container.addView(box)
+        AlertDialog.Builder(this)
+            .setTitle(if (existing == null) R.string.udl_define else R.string.udl_edit)
+            .setView(container)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val name = nameF.text.toString().trim()
+                if (name.isEmpty()) {
+                    Toast.makeText(this, R.string.udl_name_required, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val udl = UserDefinedLanguage(
+                    name = name,
+                    extensions = extF.text.toString().split(Regex("[\\s,]+")).filter { it.isNotBlank() }
+                        .map { it.lowercase().removePrefix(".") }.toSet(),
+                    keywords = listOf(kwF.text.toString().split(Regex("\\s+")).filter { it.isNotBlank() }.toSet()),
+                    types = typesF.text.toString().split(Regex("\\s+")).filter { it.isNotBlank() }.toSet(),
+                    lineComments = lineCmF.text.toString().split(Regex("\\s+")).filter { it.isNotBlank() },
+                    blockComment = blockOpenF.text.toString().takeIf { it.isNotBlank() }?.let { o ->
+                        blockCloseF.text.toString().takeIf { it.isNotBlank() }?.let { c -> o to c }
+                    },
+                    stringDelimiters = stringsF.text.toString().filter { it.isLetterOrDigit().not() && it !in "\n\r" }.toList().distinct(),
+                    operators = opsF.text.toString().split(Regex("\\s+")).filter { it.isNotBlank() }.toSet(),
+                    caseInsensitive = ciChk.isChecked
+                )
+                try {
+                    udlStore.save(udl)
+                    Toast.makeText(this, getString(R.string.udl_saved, udl.name), Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(this, getString(R.string.udl_save_failed, e.message), Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun runPluginCommand(pluginIdx: Int, cmdIdx: Int) {
@@ -2124,7 +2298,10 @@ class MainActivity : AppCompatActivity(), PluginHost {
             return
         }
         val words = if (wordCompletionOn) AutoComplete.documentWords(text) else emptyList()
-        val keywords = if (functionCompletionOn) SyntaxHighlighter.keywordsFor(language()) else emptyList()
+        val keywords = if (functionCompletionOn) {
+            editor.udl?.let { u -> u.keywords.flatten().sorted() + u.types.sorted() }
+                ?: SyntaxHighlighter.keywordsFor(language())
+        } else emptyList()
         val cands = AutoComplete.candidates(prefix, words, keywords, minCompletionChars)
         if (cands.isEmpty()) {
             dismissCompletion()
@@ -2763,7 +2940,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun showLanguagesMenu() = popup {
+        val udlList = udlStore.list()
+        if (udlList.isNotEmpty()) {
+            udlList.forEach { u -> item("${getString(R.string.udl_prefix)} ${u.name}") { setUdl(u) } }
+            menu.add(getString(R.string.udl_section)).isEnabled = false
+        }
         LanguageMode.entries.forEach { m -> item(m.displayName) { setLanguage(m) } }
+        item(getString(R.string.udl_define)) { showUdlDefineDialog(null) }
+        item(getString(R.string.udl_import)) { udlImportLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }
+        item(getString(R.string.udl_export)) { showUdlExportPicker() }
+        item(getString(R.string.udl_delete)) { showUdlDeleteDialog() }
     }
 
     private fun showToolsMenu() = popup {

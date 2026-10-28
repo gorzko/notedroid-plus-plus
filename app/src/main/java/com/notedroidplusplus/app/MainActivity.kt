@@ -48,7 +48,6 @@ import java.nio.charset.Charset
 class MainActivity : AppCompatActivity(), PluginHost {
 
     companion object {
-        private const val MAX_UNDO = 200
         private const val KEY_TABS = "tabs_state"
         private const val KEY_ACTIVE = "active_tab"
     }
@@ -66,8 +65,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     data class TabSession(
         var document: Document,
         var tab: TabLayout.Tab?,
-        val undoStack: ArrayDeque<String> = ArrayDeque(),
-        val redoStack: ArrayDeque<String> = ArrayDeque(),
+        val history: com.notedroidplusplus.app.core.UndoHistory = com.notedroidplusplus.app.core.UndoHistory(),
         var caret: Int = 0
     )
 
@@ -372,36 +370,67 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun setEditorText(text: String) {
         val s = activeSession() ?: return
-        pushUndo(s)
+        val before = editor.text?.toString() ?: ""
         editor.removeTextChangedListener(tw)
         editor.setText(text)
         editor.setSelection(text.length)
         editor.addTextChangedListener(tw)
+        if (before != text) {
+            pushWholeTextChange(s, before, text)
+        }
         s.document = s.document.copy(text = text, modified = true)
         refreshTabLabels()
         updateStatus()
     }
 
-    private fun pushUndo(s: TabSession) {
-        val snapshot = editor.text?.toString() ?: return
-        s.undoStack.addLast(snapshot)
-        if (s.undoStack.size > MAX_UNDO) s.undoStack.removeFirst()
-        s.redoStack.clear()
+    /** Record a whole-buffer replacement as one undo step built from a minimal insert/delete pair. */
+    private fun pushWholeTextChange(s: TabSession, before: String, after: String) {
+        val commonPrefix = CommonPrefix.of(before, after)
+        val commonSuffix = CommonSuffix.of(before, after, commonPrefix)
+        val delStart = commonPrefix
+        val delEnd = before.length - commonSuffix
+        val insStart = commonPrefix
+        val insEnd = after.length - commonSuffix
+        val deleted = if (delEnd > delStart) before.substring(delStart, delEnd) else ""
+        val inserted = if (insEnd > insStart) after.substring(insStart, insEnd) else ""
+        val edits = buildList {
+            if (deleted.isNotEmpty()) add(com.notedroidplusplus.app.core.UndoHistory.Edit.Delete(delStart, deleted))
+            if (inserted.isNotEmpty()) add(com.notedroidplusplus.app.core.UndoHistory.Edit.Insert(insStart, inserted))
+        }
+        if (edits.isNotEmpty()) s.history.pushCompound(edits)
     }
 
-    // ---- Text watcher (records per-tab undo) ----
+    // ---- Text watcher (records per-tab edit-range undo) ----
 
     private val tw = object : android.text.TextWatcher {
-        private var last: String = ""
-        override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) { last = s?.toString() ?: "" }
-        override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-        override fun afterTextChanged(s: android.text.Editable?) {
-            val sess = activeSession()
-            if (sess != null && last != s?.toString()) {
-                sess.undoStack.addLast(last)
-                if (sess.undoStack.size > MAX_UNDO) sess.undoStack.removeFirst()
-                sess.redoStack.clear()
+        private var pendingStart = -1
+        private var pendingRemoved: String? = null
+
+        override fun beforeTextChanged(s: CharSequence?, start: Int, beforeCount: Int, afterCount: Int) {
+            pendingRemoved = if (beforeCount > 0) {
+                s?.subSequence(start, start + beforeCount)?.toString()
+            } else null
+            pendingStart = start
+        }
+
+        override fun onTextChanged(s: CharSequence?, start: Int, beforeCount: Int, count: Int) {
+            val sess = activeSession() ?: return
+            val removed = if (beforeCount > 0) pendingRemoved.takeIf { it != null } ?: "" else ""
+            val inserted = if (count > 0) s?.subSequence(start, start + count)?.toString() ?: "" else ""
+            when {
+                removed.isNotEmpty() && inserted.isEmpty() -> sess.history.pushDelete(start, removed)
+                inserted.isNotEmpty() && removed.isEmpty() -> sess.history.pushInsert(start, inserted)
+                removed.isNotEmpty() && inserted.isNotEmpty() -> sess.history.pushCompound(
+                    buildList {
+                        add(com.notedroidplusplus.app.core.UndoHistory.Edit.Delete(start, removed))
+                        add(com.notedroidplusplus.app.core.UndoHistory.Edit.Insert(start, inserted))
+                    }
+                )
             }
+            pendingRemoved = null
+            pendingStart = -1
+        }
+        override fun afterTextChanged(s: android.text.Editable?) {
             onTextChanged()
         }
     }
@@ -781,9 +810,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun performUndo() {
         val s = activeSession() ?: return
-        if (s.undoStack.isEmpty()) return
-        val prev = s.undoStack.removeLast()
-        s.redoStack.addLast(editor.text?.toString() ?: "")
+        val current = editor.text?.toString() ?: return
+        val prev = s.history.undo(current) ?: return
         editor.removeTextChangedListener(tw)
         editor.setText(prev)
         editor.setSelection(prev.length)
@@ -795,9 +823,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun performRedo() {
         val s = activeSession() ?: return
-        if (s.redoStack.isEmpty()) return
-        val next = s.redoStack.removeLast()
-        s.undoStack.addLast(editor.text?.toString() ?: "")
+        val current = editor.text?.toString() ?: return
+        val next = s.history.redo(current) ?: return
         editor.removeTextChangedListener(tw)
         editor.setText(next)
         editor.setSelection(next.length)

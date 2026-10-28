@@ -43,6 +43,43 @@ class CodeEditText @JvmOverloads constructor(
     var onSelectionChange: (() -> Unit)? = null
     var onOverwriteToggled: (() -> Unit)? = null
 
+    // ---- Bookmarks / marks / show-symbol (#37 #38 #40) ----
+    var bookmarks: Set<Int> = emptySet()
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    private val markSpans = mutableListOf<MarkSpan>()
+
+    class MarkSpan(val start: Int, val end: Int, val span: android.text.style.BackgroundColorSpan)
+
+    fun addMark(start: Int, end: Int) {
+        val e = editableText ?: return
+        val span = android.text.style.BackgroundColorSpan(0x66FFCC00)
+        e.setSpan(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        markSpans.add(MarkSpan(start, end, span))
+        invalidate()
+    }
+
+    fun clearMarks() {
+        val e = editableText ?: return
+        markSpans.forEach { e.removeSpan(it.span) }
+        markSpans.clear()
+        invalidate()
+    }
+
+    // Show Symbol flags
+    var showSymbolFlags: ShowSymbolFlags = ShowSymbolFlags()
+        set(value) {
+            field = value
+            invalidate()
+        }
+    var tabSize: Int = 4
+
+    /** Skip syntax highlighting above this document size (bytes); 0 = never skip. */
+    var highlightThresholdBytes: Long = 0
+
     var caretWidth: Int = 2
         set(value) {
             field = value
@@ -205,7 +242,9 @@ class CodeEditText @JvmOverloads constructor(
         highlightScheduled = false
         val e = editableText ?: return
         e.getSpans(0, e.length, SyntaxSpan::class.java).forEach { e.removeSpan(it) }
-        if (colors.isNotEmpty()) {
+        val docBytes = e.toString().toByteArray(Charsets.UTF_8).size.toLong()
+        val tooLarge = highlightThresholdBytes in 1..docBytes
+        if (colors.isNotEmpty() && !tooLarge) {
             SyntaxHighlighter.tokenize(e.toString(), language).forEach { tok ->
                 val color = colors[tok.kind] ?: return@forEach
                 e.setSpan(SyntaxSpan(color), tok.start, tok.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -306,6 +345,8 @@ class CodeEditText @JvmOverloads constructor(
         }
 
         drawVerticalEdge(canvas)
+        drawShowSymbol(canvas, gl)
+        drawBookmarks(canvas, gl)
 
         val sel = selectionStart
         if (sel >= 0 && currentLineStyle != "none") {
@@ -340,6 +381,91 @@ class CodeEditText @JvmOverloads constructor(
     }
 
     private fun lineHeight(): Int = (paint.fontMetrics.descent - paint.fontMetrics.ascent).toInt()
+
+    /** Draws bookmark circles in the gutter for bookmarked visible lines. */
+    private fun drawBookmarks(canvas: Canvas, gl: Layout) {
+        if (bookmarks.isEmpty() || !showLineNumbers) return
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFCC8800.toInt()
+            style = Paint.Style.FILL
+        }
+        val top = scrollY
+        for (line in 0 until gl.lineCount) {
+            if (line !in bookmarks) continue
+            val baseline = gl.getLineBaseline(line) - scrollY + paddingTop
+            if (baseline > top + height + lineHeight() || baseline < top - lineHeight()) continue
+            val cx = (scrollX + gutterWidth - 8 - gutterPaint.measureText("0000") / 2).toFloat()
+            val cy = baseline - lineHeight() / 3f
+            canvas.drawCircle(cx, cy, lineHeight() / 4f, paint)
+        }
+    }
+
+    /** Draws Show Symbol decorations on the text canvas (before the text). */
+    private fun drawShowSymbol(canvas: Canvas, gl: Layout) {
+        val f = showSymbolFlags
+        if (!f.spacesAndTabs && !f.endOfLine && !f.nonPrinting && !f.controlChars && !f.indentGuide && !f.wrapSymbol) return
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = this@CodeEditText.paint.textSize
+            color = if (darkTheme) 0x88FFFFFF.toInt() else 0x88000000.toInt()
+        }
+        val text = editableText?.toString() ?: return
+        val top = scrollY
+        for (line in 0 until gl.lineCount) {
+            val baseline = gl.getLineBaseline(line) - scrollY + paddingTop
+            if (baseline > top + height + lineHeight() || baseline < top - lineHeight()) continue
+            val lineStart = gl.getLineStart(line)
+            val lineEnd = gl.getLineEnd(line)
+            val lineText = text.substring(lineStart.coerceIn(0, text.length), lineEnd.coerceIn(0, text.length))
+            if (f.indentGuide) drawIndentGuides(canvas, gl, line, lineText, paint)
+            if (!f.spacesAndTabs && !f.endOfLine && !f.nonPrinting && !f.controlChars && !f.wrapSymbol) continue
+            var xOff = 0f
+            for (i in lineText.indices) {
+                val c = lineText[i]
+                val x = gl.getPrimaryHorizontal(lineStart + i) - scrollX
+                when {
+                    f.spacesAndTabs && c == ' ' -> {
+                        canvas.drawText(ShowSymbol.SPACE_GLYPH, x, baseline.toFloat(), paint)
+                    }
+                    f.spacesAndTabs && c == '\t' -> {
+                        canvas.drawText(ShowSymbol.TAB_GLYPH, x, baseline.toFloat(), paint)
+                    }
+                    f.nonPrinting && ShowSymbol.isNonPrinting(c) -> {
+                        canvas.drawText(ShowSymbol.nonPrintingAbbreviation(c), x, baseline.toFloat(), paint)
+                    }
+                    f.controlChars && (c.code in 0..31 || c.code == 127) && c != '\n' -> {
+                        canvas.drawText(ShowSymbol.abbreviationFor(c.code) ?: "?", x, baseline.toFloat(), paint)
+                    }
+                }
+            }
+            // EOL marker at the end of the line (LF for wrapped lines only when wrap is off)
+            if (f.endOfLine && lineEnd < text.length && text.getOrNull(lineEnd - 1) != '\n') {
+                val x = gl.getPrimaryHorizontal(lineEnd) - scrollX
+                canvas.drawText(ShowSymbol.EOL_LF, x, baseline.toFloat(), paint)
+            }
+            if (f.wrapSymbol && gl.getLineVisibleEnd(line) < lineEnd) {
+                val x = gl.getPrimaryHorizontal(gl.getLineVisibleEnd(line)) - scrollX
+                canvas.drawText(ShowSymbol.WRAP_GLYPH, x - paint.measureText(ShowSymbol.WRAP_GLYPH), baseline.toFloat(), paint)
+            }
+        }
+    }
+
+    private fun drawIndentGuides(canvas: Canvas, gl: Layout, line: Int, lineText: String, paint: Paint) {
+        if (!lineText.startsWith(" ") && !lineText.startsWith("\t")) return
+        val indent = ShowSymbol.indentWidth(lineText, tabSize)
+        val baseline = gl.getLineBaseline(line) - scrollY + paddingTop
+        val charW = paint.measureText("8")
+        paint.style = Paint.Style.STROKE
+        val path = android.graphics.Path()
+        var col = tabSize
+        while (col < indent) {
+            val x = gl.getPrimaryHorizontal(gl.getLineStart(line)) - scrollX + col * charW
+            path.moveTo(x, (baseline - lineHeight()).toFloat())
+            path.lineTo(x, baseline.toFloat())
+            col += tabSize
+        }
+        canvas.drawPath(path, paint)
+        paint.style = Paint.Style.FILL
+    }
 
     private fun drawVerticalEdge(canvas: Canvas) {
         if (!showVerticalEdge || edgeColumns.isEmpty()) return

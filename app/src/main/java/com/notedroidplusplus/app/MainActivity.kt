@@ -49,6 +49,8 @@ import com.notedroidplusplus.app.editing.AutoComplete
 import com.notedroidplusplus.app.editing.ContentSniffer
 import com.notedroidplusplus.app.editing.EdgeColumns
 import com.notedroidplusplus.app.editing.MatchedPairs
+import com.notedroidplusplus.app.editing.ShowSymbolFlags
+import com.notedroidplusplus.app.search.resolved
 import com.notedroidplusplus.app.editing.MarkdownActions
 import com.notedroidplusplus.app.editing.SyntaxHighlighter
 import com.notedroidplusplus.app.files.FindInFilesActivity
@@ -96,7 +98,9 @@ class MainActivity : AppCompatActivity(), PluginHost {
         var caret: Int = 0,
         var readOnly: Boolean = false,
         var lastModifiedAt: Long = 0L,
-        var monitoring: Boolean = false
+        var monitoring: Boolean = false,
+        var bookmarks: Set<Int> = emptySet(),
+        var textDirectionRtl: Boolean = false
     )
 
     private val tabs = mutableListOf<TabSession>()
@@ -248,6 +252,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
         binding.cbMatchCase.setOnCheckedChangeListener { _, _ -> refreshFindOptions() }
         binding.cbWholeWord.setOnCheckedChangeListener { _, _ -> refreshFindOptions() }
         binding.cbRegex.setOnCheckedChangeListener { _, _ -> refreshFindOptions() }
+        binding.cbExtended.setOnCheckedChangeListener { _, _ -> refreshFindOptions() }
+        binding.cbDotAll.setOnCheckedChangeListener { _, _ -> refreshFindOptions() }
+        binding.btnCount.setOnClickListener { countMatchesInDoc() }
+        binding.btnFindAll.setOnClickListener { findAllInDocs(allTabs = false) }
+        binding.btnMarkAll.setOnClickListener { markAll() }
         binding.cbWrapAround.isChecked = true
 
         binding.findInput.setOnEditorActionListener { _, actionId, _ ->
@@ -304,6 +313,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 modified = st.modified
             )
             session.caret = st.caret
+            session.bookmarks = st.bookmarks.toSet()
         }
         activateTab(0)
         refreshTabLabels()
@@ -312,6 +322,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     override fun onPause() {
         super.onPause()
         saveSessionSnapshot()
+        if (prefs.getBoolean("periodic_backup", true)) writePeriodicBackup()
     }
 
     override fun onStop() {
@@ -321,6 +332,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun saveSessionSnapshot() {
         if (tabs.isEmpty()) return
+        if (!prefs.getBoolean("session_snapshot", true)) return
         syncActiveDocument()
         activeSession()?.let { it.caret = editor.selectionStart }
         val hasContent = tabs.any { it.document.text.isNotEmpty() }
@@ -334,7 +346,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
                 s.document.encoding,
                 s.document.lineEnding,
                 s.document.modified,
-                s.caret
+                s.caret,
+                s.bookmarks.toList()
             )
         })
     }
@@ -349,7 +362,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         super.onSaveInstanceState(outState)
         syncActiveDocument()
         activeSession()?.let { it.caret = editor.selectionStart }
-        val states = tabs.map { arrayOf(it.document.uri, it.document.fileName, it.document.text, it.document.language.name, it.document.encoding, it.document.lineEnding, it.document.modified, it.caret, it.readOnly) }
+        val states = tabs.map { arrayOf(it.document.uri, it.document.fileName, it.document.text, it.document.language.name, it.document.encoding, it.document.lineEnding, it.document.modified, it.caret, it.readOnly, ArrayList(it.bookmarks), it.textDirectionRtl) }
         outState.putSerializable(KEY_TABS, ArrayList(states))
         outState.putInt(KEY_ACTIVE, active)
     }
@@ -371,11 +384,41 @@ class MainActivity : AppCompatActivity(), PluginHost {
             session.document = doc
             session.caret = arr[7] as Int
             session.readOnly = arr[8] as? Boolean ?: false
+            session.bookmarks = (arr[9] as? ArrayList<Int>)?.toSet() ?: emptySet()
+            session.textDirectionRtl = arr[10] as? Boolean ?: false
         }
         val act = state.getInt(KEY_ACTIVE, 0).coerceIn(0, tabs.size - 1)
         activateTab(act)
         activeSession()?.let { editor.setSelection(it.caret.coerceIn(0, it.document.text.length)) }
         refreshTabLabels()
+    }
+
+    private val backupHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var backupRunnable: Runnable? = null
+
+    private fun startPeriodicBackup() {
+        backupRunnable?.let { backupHandler.removeCallbacks(it) }
+        if (!prefs.getBoolean("periodic_backup", true)) return
+        val minutes = prefs.getInt("periodic_backup_min", 3).coerceIn(1, 30)
+        val runnable = object : Runnable {
+            override fun run() {
+                thread(name = "periodic-backup") { runCatching { writePeriodicBackup() } }
+                backupHandler.postDelayed(this, minutes * 60_000L)
+            }
+        }
+        backupRunnable = runnable
+        backupHandler.postDelayed(runnable, minutes * 60_000L)
+    }
+
+    /** Writes dirty unsaved buffers to app-private storage for crash recovery. */
+    private fun writePeriodicBackup() {
+        val dirty = tabs.filter { it.document.modified && it.document.uri == null && it.document.text.isNotEmpty() }
+        if (dirty.isEmpty()) return
+        val dir = java.io.File(filesDir, "backups").apply { mkdirs() }
+        dirty.forEach { s ->
+            val safe = s.document.fileName.map { c -> if (c.isLetterOrDigit() || c in "-_.") c else '_' }.joinToString("")
+            runCatching { java.io.File(dir, "$safe.bak").writeText(s.document.text) }
+        }
     }
 
     private fun applyPersistedSettings() {
@@ -395,6 +438,10 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.leftPaddingDp = prefs.getInt("editor_padding_left", 4).coerceIn(0, 64)
         editor.rightPaddingDp = prefs.getInt("editor_padding_right", 4).coerceIn(0, 64)
         editor.showVerticalEdge = prefs.getBoolean("show_vertical_edge", true)
+        applyShowSymbol()
+        editor.tabSize = prefs.getInt("tab_size", 4).coerceIn(1, 16)
+        editor.highlightThresholdBytes = prefs.getInt("highlight_threshold_mb", 5).coerceIn(1, 50) * 1024L * 1024L
+        startPeriodicBackup()
         editor.edgeBackgroundMode = prefs.getBoolean("edge_background_mode", false)
         editor.edgeColumns = EdgeColumns.parse(prefs.getString("edge_columns", null))
     }
@@ -514,12 +561,26 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun addTab(uri: Uri?, initialText: String?, name: String? = null): TabSession {
         val fileName = name ?: uri?.let { files.displayName(it) } ?: getString(R.string.tab_new, newCounter++)
-        val doc = Document(
-            uri = uri?.toString(),
-            fileName = fileName,
-            text = initialText ?: "",
-            language = if (uri != null || name != null) LanguageMode.fromFileName(fileName) else LanguageMode.NORMAL_TEXT
-        )
+        val doc = if (uri == null && name == null) {
+            // New Document defaults (#43)
+            Document(
+                uri = null,
+                fileName = fileName,
+                text = initialText ?: "",
+                language = runCatching {
+                    LanguageMode.valueOf(prefs.getString("new_doc_language", "NORMAL_TEXT") ?: "NORMAL_TEXT")
+                }.getOrDefault(LanguageMode.NORMAL_TEXT),
+                encoding = runCatching { Charset.forName(prefs.getString("new_doc_encoding", "UTF-8") ?: "UTF-8") }.getOrDefault(Charsets.UTF_8).name(),
+                lineEnding = prefs.getString("new_doc_eol", "\n") ?: "\n"
+            )
+        } else {
+            Document(
+                uri = uri?.toString(),
+                fileName = fileName,
+                text = initialText ?: "",
+                language = if (uri != null || name != null) LanguageMode.fromFileName(fileName) else LanguageMode.NORMAL_TEXT
+            )
+        }
         val tab = binding.tabLayout.newTab()
         tab.setCustomView(R.layout.tab_item)
         val label = tab.customView?.findViewById<android.widget.TextView>(R.id.tab_label)
@@ -613,6 +674,10 @@ class MainActivity : AppCompatActivity(), PluginHost {
         editor.language = s.document.language
         editor.setSelection(s.caret.coerceIn(0, s.document.text.length))
         editor.addTextChangedListener(tw)
+        editor.bookmarks = s.bookmarks
+        editor.textDirection = if (s.textDirectionRtl) android.view.View.TEXT_DIRECTION_ANY_RTL
+        else android.view.View.TEXT_DIRECTION_LTR
+        editor.layoutDirection = if (s.textDirectionRtl) android.view.View.LAYOUT_DIRECTION_RTL else android.view.View.LAYOUT_DIRECTION_LTR
         applyReadOnly(s)
         refreshTabLabels()
         updateStatus()
@@ -656,6 +721,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun updateStatus() {
         val text = editor.text?.toString() ?: ""
+        val s0 = activeSession()
+        s0?.let { it.bookmarks = editor.bookmarks }
         val pos = editor.selectionStart.coerceIn(0, text.length)
         val before = text.substring(0, pos)
         val line = before.count { it == '\n' } + 1
@@ -855,7 +922,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
         findPanelOpen = !findPanelOpen
         binding.findPanel.visibility = if (findPanelOpen) View.VISIBLE else View.GONE
         binding.replaceRow.visibility = if (findPanelOpen && replace) View.VISIBLE else View.GONE
-        if (findPanelOpen) binding.findInput.requestFocus()
+        if (findPanelOpen) {
+            if (binding.findInput.text.isNullOrBlank() && prefs.getBoolean("autofill_find", true)) {
+                val sel = getSelection()
+                if (sel.isNotEmpty()) {
+                    val cap = prefs.getInt("find_max_chars", 256).coerceIn(16, 1024)
+                    binding.findInput.setText(sel.take(cap))
+                }
+            }
+            binding.findInput.requestFocus()
+        }
     }
 
     private fun refreshFindOptions() {
@@ -865,6 +941,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
             matchCase = binding.cbMatchCase.isChecked,
             wholeWord = binding.cbWholeWord.isChecked,
             regex = binding.cbRegex.isChecked,
+            extended = binding.cbExtended.isChecked,
+            dotMatchesNewline = binding.cbDotAll.isChecked,
             wrapAround = binding.cbWrapAround.isChecked
         )
     }
@@ -1732,6 +1810,166 @@ class MainActivity : AppCompatActivity(), PluginHost {
         pw.showAtLocation(editor, android.view.Gravity.NO_GRAVITY, editor.left, editor.top + y)
     }
 
+    // ---- Search extensions (#37) ----
+
+    private fun countMatchesInDoc() {
+        refreshFindOptions()
+        val text = editor.text?.toString() ?: return
+        val n = com.notedroidplusplus.app.search.countMatches(text, findOptions)
+        Toast.makeText(this, getString(R.string.search_count_result, n), Toast.LENGTH_SHORT).show()
+    }
+
+    /** Find All in current or all opened docs; results dialog jumps to the hit. */
+    private fun findAllInDocs(allTabs: Boolean) {
+        refreshFindOptions()
+        syncActiveDocument()
+        val targets = if (allTabs) tabs.toList() else listOfNotNull(activeSession())
+        val hits = mutableListOf<com.notedroidplusplus.app.search.SearchHit>()
+        targets.forEach { s ->
+            hits.addAll(com.notedroidplusplus.app.search.findAll(s.document.text, findOptions, s.document.fileName, s.document.uri))
+        }
+        if (hits.isEmpty()) {
+            Toast.makeText(this, R.string.toast_no_match, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val labels = hits.map { "${it.file}:${it.line}:${it.column}  ${it.lineText}" }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.search_results_title, hits.size))
+            .setItems(labels.toTypedArray()) { _, which ->
+                val hit = hits[which]
+                val idx = tabs.indexOfFirst { it.document.fileName == hit.file }
+                if (idx >= 0) {
+                    activateTab(idx)
+                    val offset = TextUtils.lineIndexToOffset(tabs[idx].document.text, (hit.line - 1).coerceAtLeast(0))
+                    editor.setSelection((offset + hit.column - 1).coerceIn(0, tabs[idx].document.text.length))
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Mark All: background-span every match in the active document. */
+    private fun markAll() {
+        refreshFindOptions()
+        val text = editor.text?.toString() ?: return
+        val hits = com.notedroidplusplus.app.search.findAll(text, findOptions)
+        if (hits.isEmpty()) {
+            Toast.makeText(this, R.string.toast_no_match, Toast.LENGTH_SHORT).show()
+            return
+        }
+        editor.clearMarks()
+        hits.forEach { h ->
+            val start = h.start.coerceIn(0, text.length)
+            editor.addMark(start, (start + effectiveQueryLength(text, start)).coerceAtMost(text.length))
+        }
+        Toast.makeText(this, getString(R.string.search_marked, hits.size), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun clearMarks() {
+        editor.clearMarks()
+        Toast.makeText(this, R.string.search_marks_cleared, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun effectiveQueryLength(text: String, start: Int): Int {
+        val resolved = findOptions.resolved()
+        return if (resolved.regex) {
+            val re = if (resolved.matchCase) Regex(resolved.query)
+            else Regex(resolved.query, RegexOption.IGNORE_CASE)
+            runCatching { re.find(text, start)?.value?.length ?: 1 }.getOrDefault(1)
+        } else resolved.query.length.coerceAtLeast(1)
+    }
+
+    // ---- Bookmarks (#38) ----
+
+    private fun showBookmarksMenu() = popup {
+        item(getString(R.string.bm_toggle)) { toggleBookmark() }
+        item(getString(R.string.bm_next)) { gotoBookmark(forward = true) }
+        item(getString(R.string.bm_prev)) { gotoBookmark(forward = false) }
+        item(getString(R.string.bm_clear)) {
+            activeSession()?.let { it.bookmarks = emptySet() }
+            editor.bookmarks = emptySet()
+        }
+        item(getString(R.string.bm_invert)) {
+            val s = activeSession() ?: return@item
+            val lines = s.document.text.count { it == '\n' } + 1
+            s.bookmarks = com.notedroidplusplus.app.core.Bookmarks.invert(s.bookmarks, lines)
+            editor.bookmarks = s.bookmarks
+        }
+        item(getString(R.string.bm_copy)) { copyBookmarkedLines(cut = false) }
+        item(getString(R.string.bm_cut)) { copyBookmarkedLines(cut = true) }
+        item(getString(R.string.bm_paste)) { pasteToBookmarkedLines() }
+    }
+
+    private fun currentLineIndex(): Int {
+        val text = editor.text?.toString() ?: ""
+        return text.substring(0, editor.selectionStart.coerceIn(0, text.length)).count { it == '\n' }
+    }
+
+    private fun toggleBookmark() {
+        val s = activeSession() ?: return
+        val line = currentLineIndex()
+        s.bookmarks = com.notedroidplusplus.app.core.Bookmarks.toggle(s.bookmarks, line)
+        editor.bookmarks = s.bookmarks
+    }
+
+    private fun gotoBookmark(forward: Boolean) {
+        val s = activeSession() ?: return
+        val line = currentLineIndex()
+        val target = if (forward) com.notedroidplusplus.app.core.Bookmarks.next(s.bookmarks, line)
+        else com.notedroidplusplus.app.core.Bookmarks.prev(s.bookmarks, line)
+        if (target < 0) {
+            Toast.makeText(this, R.string.no_bookmarks, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val text = s.document.text
+        val offset = TextUtils.lineIndexToOffset(text, target)
+        editor.setSelection(offset.coerceIn(0, text.length))
+    }
+
+    private fun copyBookmarkedLines(cut: Boolean) {
+        val s = activeSession() ?: return
+        if (s.bookmarks.isEmpty()) {
+            Toast.makeText(this, R.string.no_bookmarks, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (isEditorLocked()) return
+        syncActiveDocument()
+        val eol = s.document.lineEnding
+        val block = com.notedroidplusplus.app.core.Bookmarks.collectLines(s.document.text, eol, s.bookmarks)
+        copyToClipboard(block)
+        if (cut) {
+            setEditorText(com.notedroidplusplus.app.core.Bookmarks.removeLines(s.document.text, eol, s.bookmarks))
+            s.bookmarks = emptySet()
+            editor.bookmarks = emptySet()
+        }
+    }
+
+    private fun pasteToBookmarkedLines() {
+        val s = activeSession() ?: return
+        if (s.bookmarks.isEmpty()) {
+            Toast.makeText(this, R.string.no_bookmarks, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (isEditorLocked()) return
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = cm.primaryClip?.getItemAt(0)?.text?.toString()
+        if (clip.isNullOrEmpty()) {
+            Toast.makeText(this, R.string.no_bookmarks, Toast.LENGTH_SHORT).show()
+            return
+        }
+        syncActiveDocument()
+        val eol = s.document.lineEnding
+        var text = s.document.text
+        // replace each bookmarked line's content with the clip, in reverse to keep offsets stable
+        s.bookmarks.sortedDescending().forEach { line ->
+            val start = TextUtils.lineIndexToOffset(text, line)
+            val lineText = com.notedroidplusplus.app.core.TextUtils.lineAt(text, line)
+            val end = (start + lineText.length).coerceAtMost(text.length)
+            text = text.substring(0, start) + clip + text.substring(end)
+        }
+        setEditorText(text)
+    }
+
     // ---- Menus ----
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -1902,6 +2140,12 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun showSearchMenu() = popup {
         item(getString(R.string.action_find)) { toggleFindPanel(false) }
         item(getString(R.string.action_replace)) { toggleFindPanel(true) }
+        item(getString(R.string.search_count)) { countMatchesInDoc() }
+        item(getString(R.string.search_find_all_current)) { findAllInDocs(allTabs = false) }
+        item(getString(R.string.search_find_all_opened)) { findAllInDocs(allTabs = true) }
+        item(getString(R.string.search_mark_all)) { markAll() }
+        item(getString(R.string.search_clear_marks)) { clearMarks() }
+        item(getString(R.string.menu_bookmarks)) { showBookmarksMenu() }
         item(getString(R.string.action_goto)) { gotoLine() }
         item(getString(R.string.action_find_in_files)) {
             refreshFindOptions()
@@ -1966,6 +2210,94 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.action_view_external)) { viewCurrentFileExternally() }
         item(getString(R.string.action_monitoring)) { toggleMonitoring() }
         item(getString(R.string.action_summary)) { showSummary() }
+        item(getString(R.string.menu_show_symbol)) { showSymbolMenu() }
+        item(getString(R.string.action_fullscreen)) { toggleFullScreen(distractionFree = false) }
+        item(getString(R.string.action_distraction_free)) { toggleFullScreen(distractionFree = true) }
+        item(getString(R.string.action_rtl)) { setTextDirection(android.view.View.LAYOUT_DIRECTION_RTL) }
+        item(getString(R.string.action_ltr)) { setTextDirection(android.view.View.LAYOUT_DIRECTION_LTR) }
+    }
+
+    private fun showSymbolMenu() {
+        popup {
+            fun toggled(key: String): Boolean = prefs.getBoolean(key, false)
+            fun flip(key: String, default: Boolean = false) {
+                prefs.edit().putBoolean(key, !toggled(key)).apply()
+                applyShowSymbol()
+            }
+            item(check(getString(R.string.symbol_space_tab), toggled("symbol_space_tab"))) { flip("symbol_space_tab") }
+            item(check(getString(R.string.symbol_eol), toggled("symbol_eol"))) { flip("symbol_eol") }
+            item(check(getString(R.string.symbol_non_printing), toggled("symbol_non_printing"))) { flip("symbol_non_printing") }
+            item(check(getString(R.string.symbol_control), toggled("symbol_control"))) { flip("symbol_control") }
+            item(check(getString(R.string.symbol_indent_guide), toggled("symbol_indent_guide"))) { flip("symbol_indent_guide") }
+            item(check(getString(R.string.symbol_wrap), toggled("symbol_wrap"))) { flip("symbol_wrap") }
+            item(check(getString(R.string.symbol_all), toggled("symbol_all"))) { flip("symbol_all") }
+        }
+    }
+
+    private fun check(label: String, on: Boolean) = if (on) "✓ $label" else "    $label"
+
+    private fun applyShowSymbol() {
+        editor.showSymbolFlags = ShowSymbolFlags.fromPrefs(
+            prefs.getBoolean("symbol_space_tab", false),
+            prefs.getBoolean("symbol_eol", false),
+            prefs.getBoolean("symbol_non_printing", false),
+            prefs.getBoolean("symbol_control", false),
+            prefs.getBoolean("symbol_indent_guide", false),
+            prefs.getBoolean("symbol_wrap", false),
+            prefs.getBoolean("symbol_all", false)
+        )
+    }
+
+    // ---- Full-screen / RTL (#41) ----
+
+    private var fullScreen = false
+
+    private fun toggleFullScreen(distractionFree: Boolean) {
+        fullScreen = !fullScreen
+        val window = window
+        val decor = window.decorView
+        if (fullScreen) {
+            @Suppress("DEPRECATION")
+            decor.systemUiVisibility = (
+                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                )
+            binding.appBar.visibility = View.GONE
+            if (distractionFree) {
+                binding.statusBar.visibility = View.GONE
+                binding.tabLayout.visibility = View.GONE
+            }
+            val exit = android.widget.Button(this).apply {
+                text = getString(R.string.action_exit_fs)
+                setOnClickListener { toggleFullScreen(distractionFree) }
+            }
+            (binding.root as? android.view.ViewGroup)?.addView(exit, androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams(
+                androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams.WRAP_CONTENT,
+                androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL })
+            exit.tag = "fs_exit"
+        } else {
+            @Suppress("DEPRECATION")
+            decor.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_VISIBLE
+            binding.appBar.visibility = View.VISIBLE
+            binding.statusBar.visibility = View.VISIBLE
+            binding.tabLayout.visibility = View.VISIBLE
+            (binding.root as? android.view.ViewGroup)?.findViewWithTag<android.widget.Button>("fs_exit")?.let {
+                (binding.root as android.view.ViewGroup).removeView(it)
+            }
+        }
+    }
+
+    private fun setTextDirection(direction: Int) {
+        val s = activeSession() ?: return
+        s.textDirectionRtl = direction == android.view.View.LAYOUT_DIRECTION_RTL
+        editor.textDirection = if (s.textDirectionRtl) android.view.View.TEXT_DIRECTION_ANY_RTL
+        else android.view.View.TEXT_DIRECTION_LTR
+        editor.layoutDirection = direction
     }
 
     private fun restoreDefaultZoom() {

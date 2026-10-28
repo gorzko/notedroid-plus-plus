@@ -128,4 +128,34 @@
         <item>aligned</item>
         <item>indent</item>
     </string-array>
+
+    <string-array name="language_mode_names">
+        <item>NORMAL_TEXT</item>
+        <item>C</item>
+        <item>CPP</item>
+        <item>CSHARP</item>
+        <item>JAVA</item>
+        <item>KOTLIN</item>
+        <item>PYTHON</item>
+        <item>JAVASCRIPT</item>
+        <item>TYPESCRIPT</item>
+        <item>HTML</item>
+        <item>XML</item>
+        <item>CSS</item>
+        <item>JSON</item>
+        <item>YAML</item>
+        <item>MARKDOWN</item>
+        <item>SQL</item>
+        <item>SHELL</item>
+        <item>BATCH</item>
+        <item>INI</item>
+        <item>PHP</item>
+        <item>GO</item>
+        <item>RUST</item>
+        <item>SWIFT</item>
+        <item>RUBY</item>
+        <item>LUA</item>
+        <item>MAKEFILE</item>
+        <item>TEX</item>
+    </string-array>
 </resources>

@@ -131,6 +131,73 @@
             app:defaultValue="false" />
     </PreferenceCategory>
 
+    <PreferenceCategory app:title="@string/pref_new_doc_title">
+        <ListPreference
+            app:key="new_doc_encoding"
+            app:title="@string/pref_new_doc_encoding"
+            app:defaultValue="UTF-8"
+            app:entries="@array/encoding_names"
+            app:entryValues="@array/encoding_names" />
+        <ListPreference
+            app:key="new_doc_eol"
+            app:title="@string/pref_new_doc_eol"
+            app:defaultValue="&#10;"
+            app:entries="@array/eol_names"
+            app:entryValues="@array/eol_values" />
+        <ListPreference
+            app:key="new_doc_language"
+            app:title="@string/pref_new_doc_language"
+            app:defaultValue="NORMAL_TEXT"
+            app:entries="@array/language_mode_names"
+            app:entryValues="@array/language_mode_names" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/pref_indent_title">
+        <SeekBarPreference
+            app:key="tab_size"
+            app:title="@string/pref_tab_size"
+            app:defaultValue="4"
+            app:min="1"
+            android:max="16"
+            app:showSeekBarValue="true" />
+        <SwitchPreferenceCompat
+            app:key="replace_tabs_spaces"
+            app:title="@string/pref_replace_spaces"
+            app:defaultValue="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/pref_searching_title">
+        <SwitchPreferenceCompat
+            app:key="autofill_find"
+            app:title="@string/pref_autofill_find"
+            app:defaultValue="true" />
+        <SeekBarPreference
+            app:key="find_max_chars"
+            app:title="@string/pref_find_max_chars"
+            app:defaultValue="256"
+            app:min="16"
+            android:max="1024"
+            app:showSeekBarValue="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/pref_backup_title">
+        <SwitchPreferenceCompat
+            app:key="session_snapshot"
+            app:title="@string/pref_session_snapshot"
+            app:defaultValue="true" />
+        <SwitchPreferenceCompat
+            app:key="periodic_backup"
+            app:title="@string/pref_periodic_backup"
+            app:defaultValue="true" />
+        <SeekBarPreference
+            app:key="periodic_backup_min"
+            app:title="@string/pref_periodic_backup_min"
+            app:defaultValue="3"
+            app:min="1"
+            android:max="30"
+            app:showSeekBarValue="true" />
+    </PreferenceCategory>
+
     <PreferenceCategory app:title="@string/pref_performance">
         <SeekBarPreference
             app:key="highlight_threshold_mb"

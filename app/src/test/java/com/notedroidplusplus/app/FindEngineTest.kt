@@ -1,6 +1,7 @@
 package com.notedroidplusplus.app
 
 import com.notedroidplusplus.app.search.FindOptions
+import com.notedroidplusplus.app.search.countMatches
 import com.notedroidplusplus.app.search.findNext
 import com.notedroidplusplus.app.search.findAll
 import com.notedroidplusplus.app.search.findPrev
@@ -111,5 +112,31 @@ class FindEngineTest {
     @Test
     fun matchesHelper() {
         assertTrue(FindOptions(query = "zz").matches("aZZ"))
+    }
+
+    @Test
+    fun extendedModeMatchesLiteralNewlineAndTab() {
+        val opts = FindOptions(query = "a\\nb", extended = true)
+        assertEquals(2, findNext("xxa\nb", 0, opts))
+        assertEquals(2, countMatches("a\nb a\nb", opts))
+        assertEquals(1, countMatches("just one a\nb here", opts))
+        val replaced = replaceAll("a\nb", FindOptions(query = "\\n", replaceWith = "-", extended = true))
+        assertEquals("a-b" to 1, replaced)
+    }
+
+    @Test
+    fun dotMatchesNewline() {
+        val opts = FindOptions(query = "a.b", regex = true)
+        assertEquals(-1, findNext("a\nb", 0, opts))
+        val dotAll = opts.copy(dotMatchesNewline = true)
+        assertEquals(0, findNext("a\nb", 0, dotAll))
+    }
+
+    @Test
+    fun countMatchesLiteralWholeWordAndRegex() {
+        assertEquals(2, countMatches("cat catalog cat", FindOptions(query = "cat", wholeWord = true)))
+        assertEquals(3, countMatches("a1b2c3", FindOptions(query = "\\d", regex = true)))
+        assertEquals(0, countMatches("abc", FindOptions(query = "")))
+        assertEquals(2, countMatches("abab", FindOptions(query = "ab")))
     }
 }

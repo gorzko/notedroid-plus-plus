@@ -295,4 +295,55 @@
     <string name="monitoring_changed">File changed on disk; unsaved edits kept (use Reload)</string>
     <string name="monitoring_reloaded">Reloaded from disk (monitoring)</string>
     <string name="pref_monitoring_interval">Monitoring poll interval (seconds)</string>
+
+    <string name="extended_mode">Extended (\n)</string>
+    <string name="dot_matches_newline">. matches newline</string>
+    <string name="search_count">Count</string>
+    <string name="search_count_result">%1$d match(es)</string>
+    <string name="search_find_all_current">Find All in Current Document</string>
+    <string name="search_find_all_opened">Find All in All Opened Documents</string>
+    <string name="search_mark_all">Mark All</string>
+    <string name="search_clear_marks">Clear All Marks</string>
+    <string name="search_marked">Marked %1$d match(es)</string>
+    <string name="search_marks_cleared">All marks cleared</string>
+    <string name="search_results_title">Search results (%1$d)</string>
+
+    <string name="menu_bookmarks">Bookmarks</string>
+    <string name="bm_toggle">Toggle Bookmark</string>
+    <string name="bm_next">Next Bookmark</string>
+    <string name="bm_prev">Previous Bookmark</string>
+    <string name="bm_clear">Clear All Bookmarks</string>
+    <string name="bm_invert">Invert Bookmarks</string>
+    <string name="bm_cut">Cut Bookmarked Lines</string>
+    <string name="bm_copy">Copy Bookmarked Lines</string>
+    <string name="bm_paste">Paste to (Replace) Bookmarked Lines</string>
+    <string name="no_bookmarks">No bookmarks</string>
+
+    <string name="menu_show_symbol">Show Symbol</string>
+    <string name="symbol_space_tab">Show Space and Tab</string>
+    <string name="symbol_eol">Show End of Line</string>
+    <string name="symbol_non_printing">Show Non-Printing Characters</string>
+    <string name="symbol_control">Show Control Characters</string>
+    <string name="symbol_all">Show All Characters</string>
+    <string name="symbol_indent_guide">Show Indent Guide</string>
+    <string name="symbol_wrap">Show Wrap Symbol</string>
+
+    <string name="action_fullscreen">Toggle Full-Screen Mode</string>
+    <string name="action_distraction_free">Distraction Free Mode</string>
+    <string name="action_exit_fs">Exit full-screen</string>
+    <string name="action_rtl">Text Direction RTL</string>
+    <string name="action_ltr">Text Direction LTR</string>
+
+    <string name="pref_new_doc_title">New Document</string>
+    <string name="pref_indent_title">Indentation</string>
+    <string name="pref_tab_size">Tab size</string>
+    <string name="pref_replace_spaces">Replace tabs with spaces</string>
+    <string name="pref_searching_title">Searching</string>
+    <string name="pref_autofill_find">Auto-fill find field from selection</string>
+    <string name="pref_find_max_chars">Max chars copied to find field</string>
+    <string name="pref_backup_title">Backup</string>
+    <string name="pref_session_snapshot">Session snapshot</string>
+    <string name="pref_periodic_backup">Periodic backup of dirty buffers</string>
+    <string name="pref_periodic_backup_min">Backup interval (minutes)</string>
+    <string name="backup_restored">Backed-up buffers restored</string>
 </resources>

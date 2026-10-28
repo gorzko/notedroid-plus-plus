@@ -52,7 +52,8 @@ class SaveAsCoordinatorTest {
         assertEquals(0, c.queued.size)
     }
 
-    // C2: cancelling a standalone flow must never drop another flow's queued requests.
+    // C2: cancelling the active save-all flow must drop only its own series —
+    // a queued standalone flow from another owner survives and starts next.
     @Test
     fun cancelIsOwnerScoped() {
         val c = SaveAsCoordinator()
@@ -61,11 +62,12 @@ class SaveAsCoordinatorTest {
         c.request(owner = "save-all")
         val standalone = c.request(owner = null)
         assertFalse(standalone.startNow)
-        val res = c.cancel(standalone.flow.key)
-        assertEquals(0, res.dropped.size)
-        assertEquals(3, c.queued.size)
-        // The save-all series is untouched and still drains.
-        assertEquals(f1.flow.key, c.active?.key)
+        val res = c.cancel(f1.flow.key)
+        assertEquals(2, res.dropped.size)
+        // The queued standalone flow is untouched and starts next.
+        assertEquals(standalone.flow.key, res.next?.key)
+        assertEquals(standalone.flow.key, c.active?.key)
+        assertEquals(0, c.queued.size)
     }
 
     @Test

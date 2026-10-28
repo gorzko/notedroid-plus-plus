@@ -46,7 +46,7 @@ object MarkdownActions {
         val lineStart = text.lastIndexOf('\n', s - 1).let { if (it == -1) 0 else it + 1 }
         val lineEnd = text.indexOf('\n', s).let { if (it == -1) text.length else it }
         val line = text.substring(lineStart, lineEnd)
-        val existing = Regex("^#{1,6}\\s*").find(line)?.value?.length ?: 0
+        val existing = Regex("^#{1,6}(?:\\s|$)").find(line)?.value?.length ?: 0
         val body = if (existing > 0) line.substring(existing) else line
         val lvl = level.coerceIn(1, MAX_HEADING_LEVEL)
         val prefix = "${"#".repeat(lvl)} "

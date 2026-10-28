@@ -87,6 +87,12 @@ class MarkdownActionsTest {
     }
 
     @Test
+    fun headingDoesNotEatSevenHashLines() {
+        val r = MarkdownActions.heading("####### text", 0, 12, 2)
+        assertEquals("## ####### text", r.text)
+    }
+
+    @Test
     fun headingOnEmptyLine() {
         val r = MarkdownActions.heading("", 0, 0, 2)
         assertEquals("##", r.text)
@@ -138,6 +144,10 @@ class MarkdownActionsTest {
         val text = "- alpha\nbeta"
         val r = MarkdownActions.list(text, 0, text.length, ordered = false)
         assertEquals("alpha\nbeta", r.text)
+        assertEquals(0, r.newStart)
+        assertEquals("alpha\nbeta".length, r.newEnd)
+        val again = MarkdownActions.list(r.text, r.newStart, r.newEnd, ordered = true)
+        assertEquals("1. alpha\n2. beta", again.text)
     }
 
     @Test

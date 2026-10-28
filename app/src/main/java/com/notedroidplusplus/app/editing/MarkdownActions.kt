@@ -15,7 +15,14 @@ object MarkdownActions {
     fun toggleSpan(text: String, start: Int, end: Int, marker: String): Result {
         var s = start.coerceIn(0, text.length)
         var e = end.coerceIn(s, text.length)
-        // No selection: apply to the whole current line, consistent with heading/list (#76)
+        // Caret-inside-span no-op detection must use the collapsed caret (#26 regression)
+        val caretAfterOpening = s == e && text.substring(0, s).endsWith(marker) &&
+            text.substring(e).indexOf(marker) > 0
+        val caretBeforeClosing = s == e && text.substring(e).startsWith(marker) &&
+            text.substring(0, s).lastIndexOf(marker).let { it >= 0 && s - (it + marker.length) > 0 }
+        if (s == e && (caretAfterOpening || caretBeforeClosing)) return Result(text, s, e)
+        // No selection: apply to the whole current line's trimmed content,
+        // consistent with heading/list (#76); blank lines keep the empty-pair insert
         if (s == e) {
             val ls = text.lastIndexOf('\n', s - 1).let { if (it == -1) 0 else it + 1 }
             val le = text.indexOf('\n', s).let { if (it == -1) text.length else it }
@@ -32,12 +39,7 @@ object MarkdownActions {
         val after = text.substring(e)
         val outside = before.endsWith(marker) && after.startsWith(marker)
         val inside = sel.startsWith(marker) && sel.endsWith(marker) && sel.length >= 2 * marker.length
-        val caretAfterOpening = s == e && before.endsWith(marker) && after.indexOf(marker) > 0
-        val caretBeforeClosing = s == e && after.startsWith(marker) &&
-            before.lastIndexOf(marker).let { it >= 0 && before.length - (it + marker.length) > 0 }
-        val caretInsideSpan = caretAfterOpening || caretBeforeClosing
         return when {
-            caretInsideSpan -> Result(text, s, e)
             outside -> Result(
                 before.substring(0, before.length - marker.length) + sel + after.substring(marker.length),
                 s - marker.length,
@@ -69,14 +71,16 @@ object MarkdownActions {
         val lvl = level.coerceIn(1, MAX_HEADING_LEVEL)
         // Same-level re-press toggles the heading off (#75); a different level replaces it
         val leadingHashes = line.takeWhile { it == '#' }.length
-        val newLine = if (leadingHashes in 1..MAX_HEADING_LEVEL && leadingHashes == lvl) {
+        val toggleOff = leadingHashes in 1..MAX_HEADING_LEVEL && leadingHashes == lvl
+        val newLine = if (toggleOff) {
             body.trimEnd()
         } else {
             ("${"#".repeat(lvl)} " + body).trimEnd()
         }
         val newText = text.substring(0, lineStart) + newLine + text.substring(lineEnd)
-        val prefixDelta = prefix.length - existing
-        val bodyStart = lineStart + prefix.length.coerceAtMost(newLine.length)
+        val prefixLength = if (toggleOff) 0 else lvl + 1
+        val prefixDelta = prefixLength - existing
+        val bodyStart = lineStart + prefixLength.coerceAtMost(newLine.length)
         val lo = (s + prefixDelta).coerceIn(bodyStart, lineStart + newLine.length)
         val hi = (e + prefixDelta).coerceIn(lo, lineStart + newLine.length)
         return Result(newText, lo, hi)

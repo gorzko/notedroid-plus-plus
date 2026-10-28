@@ -186,12 +186,13 @@ class MarkdownActionsTest {
     }
 
     @Test
-    fun collapsedCaretAtSpanEdgeStillWraps() {
-        // Caret at the outer edge of the pair: existing wrap path (pre-PR-29 behavior preserved).
+    fun collapsedCaretAtSpanEdgeTogglesLineOff() {
+        // #76: with no selection the current line is the target, so a caret
+        // at the outer edge of a fully-marked line toggles the span off.
         val r = MarkdownActions.toggleSpan("**x**", 0, 0, "**")
-        assertEquals("******x**", r.text)
+        assertEquals("x", r.text)
         val r2 = MarkdownActions.toggleSpan("**x**", 5, 5, "**")
-        assertEquals("**x******", r2.text)
+        assertEquals("x", r2.text)
     }
 
     @Test
@@ -203,9 +204,13 @@ class MarkdownActionsTest {
     }
 
     @Test
-    fun collapsedCaretOutsideAnySpanStillWraps() {
+    fun collapsedCaretOutsideAnySpanWrapsWholeLine() {
+        // #76: a collapsed caret applies to the current line instead of
+        // inserting an empty marker pair at the caret.
         val r = MarkdownActions.toggleSpan("ab", 1, 1, "**")
-        assertEquals("a****b", r.text)
+        assertEquals("**ab**", r.text)
+        assertEquals(2, r.newStart)
+        assertEquals(4, r.newEnd)
     }
     @Test
     fun italicGuardInsideBoldSpanNoOps() {
@@ -217,21 +222,21 @@ class MarkdownActionsTest {
     }
 
     @Test
-    fun inlineCodeInsideBoldSpanStillWraps() {
-        // Backtick is not the adjacent marker; the guard does not fire, wrap path taken.
-        val r = MarkdownActions.inlineCode("**x**", 2, 2)
-        assertEquals("**``x**", r.text)
+    fun inlineCodeInsideBoldSpanWithSelectionStillWraps() {
+        // Guard does not fire for a selection; the selection gets wrapped.
+        val r = MarkdownActions.inlineCode("**x**", 2, 3)
+        assertEquals("**`x`**", r.text)
         assertEquals(3, r.newStart)
-        assertEquals(3, r.newEnd)
+        assertEquals(4, r.newEnd)
     }
 
     @Test
-    fun strikeInsideBoldSpanStillWraps() {
-        // Double-tilde is not the adjacent marker; the guard does not fire, wrap path taken.
-        val r = MarkdownActions.strike("**x**", 2, 2)
-        assertEquals("**~~~~x**", r.text)
+    fun strikeInsideBoldSpanWithSelectionStillWraps() {
+        // Double-tilde is not the adjacent marker; the guard does not fire for a selection.
+        val r = MarkdownActions.strike("**x**", 2, 3)
+        assertEquals("**~~x~~**", r.text)
         assertEquals(4, r.newStart)
-        assertEquals(4, r.newEnd)
+        assertEquals(5, r.newEnd)
     }
 
     @Test
@@ -242,7 +247,7 @@ class MarkdownActionsTest {
         assertEquals(5, r.newStart)
         assertEquals(5, r.newEnd)
     }
-\n
+
     @Test
     fun headingSameLevelTogglesOff() {
         for (lvl in 1..6) {
@@ -296,11 +301,23 @@ class MarkdownActionsTest {
     }
 
     @Test
-    fun spanCollapsedCaretOnBlankLineInsertsEmptyPair() {
+    fun spanCollapsedCaretOnBlankLineInsertsEmptyPairAtCaret() {
         val r = MarkdownActions.bold("   ", 1, 1)
-        assertEquals("****", r.text)
+        assertEquals(" ****  ", r.text)
+        assertEquals(3, r.newStart)
+        assertEquals(3, r.newEnd)
+    }
+
+    @Test
+    fun spanCollapsedCaretInsideMarkersIsNoOp() {
+        val r = MarkdownActions.bold("**hi**", 2, 2)
+        assertEquals("**hi**", r.text)
         assertEquals(2, r.newStart)
         assertEquals(2, r.newEnd)
+        val r2 = MarkdownActions.bold("**hi**", 4, 4)
+        assertEquals("**hi**", r2.text)
+        assertEquals(4, r2.newStart)
+        assertEquals(4, r2.newEnd)
     }
 
     @Test

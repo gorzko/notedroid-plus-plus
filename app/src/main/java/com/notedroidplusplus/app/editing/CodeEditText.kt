@@ -158,6 +158,10 @@ class CodeEditText @JvmOverloads constructor(
     var pendingVirtualColumn: Int = -1
         private set
 
+    /** Line the virtual column was recorded on; cleared when the caret moves away. */
+    var pendingVirtualLine: Int = -1
+        private set
+
     /** Records a tap beyond end-of-line as the virtual caret column (no text insert). */
     fun virtualColumnFor(text: String, line: Int, targetColumn: Int): Int {
         if (!virtualSpace) return -1
@@ -167,9 +171,11 @@ class CodeEditText @JvmOverloads constructor(
         val currentLen = contentEnd - lineStart
         if (targetColumn <= currentLen) {
             pendingVirtualColumn = -1
+            pendingVirtualLine = -1
             return -1
         }
         pendingVirtualColumn = targetColumn
+        pendingVirtualLine = line
         return contentEnd
     }
 
@@ -246,6 +252,7 @@ class CodeEditText @JvmOverloads constructor(
     /** Applies pair/overwrite decisions for a single typed [text] at [pos]. */
     internal fun applyTypedText(text: String, pos: Int): String? {
         lastInsertWasPair = false
+        materializeVirtualSpace(pos)
         if (text.length == 1) {
             val typed = text[0]
             // matched-pair logic
@@ -277,7 +284,6 @@ class CodeEditText @JvmOverloads constructor(
                 }
             }
         }
-        materializeVirtualSpace(pos)
         return if (text.isEmpty()) null else text
     }
 
@@ -440,6 +446,14 @@ class CodeEditText @JvmOverloads constructor(
 
     override fun onSelectionChanged(selStart: Int, selEnd: Int) {
         super.onSelectionChanged(selStart, selEnd)
+        // m1: a pending virtual-space column is only valid on its own line
+        if (pendingVirtualColumn >= 0 && layout != null) {
+            val line = layout!!.getLineForOffset(selStart.coerceAtLeast(0))
+            if (line != pendingVirtualLine) {
+                pendingVirtualColumn = -1
+                pendingVirtualLine = -1
+            }
+        }
         computeBracket()
         onSelectionChange?.invoke()
         invalidate()

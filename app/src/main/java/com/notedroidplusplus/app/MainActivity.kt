@@ -42,6 +42,7 @@ import com.notedroidplusplus.app.core.MacroStore
 import com.notedroidplusplus.app.core.SaveAsCoordinator
 import com.notedroidplusplus.app.core.WindowSort
 import com.notedroidplusplus.app.core.SessionStore
+import com.notedroidplusplus.app.core.TabBar
 import com.notedroidplusplus.app.core.ChangeHistory
 import com.notedroidplusplus.app.core.TabBar
 import com.notedroidplusplus.app.core.TextUtils
@@ -764,6 +765,14 @@ class MainActivity : AppCompatActivity(), PluginHost {
         fileName: String,
         language: LanguageMode
     ): TabSession {
+        // Notepad++ behavior: opening a file already open in another tab
+        // activates that tab instead of creating a duplicate (#74).
+        val uriString = uri.toString()
+        val existingIdx = TabBar.indexOfUri(tabs, { it.document.uri }, uriString)
+        if (existingIdx >= 0) {
+            activateTab(existingIdx)
+            return tabs[existingIdx]
+        }
         val current = activeSession()
         val reuse = current != null && current.document.uri == null &&
             !current.document.modified && current.document.text.isEmpty()

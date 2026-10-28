@@ -24,6 +24,10 @@ object TabBar {
     /** Close All to the Left of [anchor] (exclusive), reversed. */
     fun closeAllToLeft(anchor: Int): List<Int> = (0 until anchor).toList().reversed()
 
+    /** Index of the tab already holding [uri], or -1 (activate-existing on open, #74). */
+    fun <T> indexOfUri(tabs: List<T>, uriOf: (T) -> String?, uri: String): Int =
+        tabs.indexOfFirst { uriOf(it) == uri }
+
     /** Close All to the Right of [anchor] (exclusive), reversed. */
     fun closeAllToRight(count: Int, anchor: Int): List<Int> =
         ((anchor + 1) until count).toList().reversed()

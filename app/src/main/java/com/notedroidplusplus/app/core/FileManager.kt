@@ -84,7 +84,17 @@ class FileManager(private val io: FileIo) {
                     ?: throw IllegalStateException("Cannot write $uri")
             }
 
-            override fun displayName(uri: Uri): String = uri.lastPathSegment ?: uri.toString()
+            override fun displayName(uri: Uri): String {
+                runCatching {
+                    context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+                        val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0 && c.moveToFirst() && !c.isNull(idx)) {
+                            c.getString(idx)?.let { return it }
+                        }
+                    }
+                }
+                return uri.lastPathSegment?.substringAfterLast('/') ?: uri.toString()
+            }
         }
     }
 }

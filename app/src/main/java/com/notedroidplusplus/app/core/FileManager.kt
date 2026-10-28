@@ -26,8 +26,16 @@ class FileManager(private val io: FileIo) {
 
     fun load(uri: Uri, forcedCharset: Charset? = null): LoadedFile {
         val bytes = io.readBytes(uri)
-        val charset = forcedCharset ?: TextUtils.detect(bytes)
         val hadBom = hasBom(bytes)
+        val charset = forcedCharset ?: run {
+            val heuristic = TextUtils.detect(bytes)
+            if (hadBom || heuristic != Charsets.UTF_8) heuristic
+            else {
+                // Notepad++ prolog-first detection: an XML/HTML declared encoding wins
+                val decoded = String(stripBom(bytes), heuristic)
+                TextUtils.detectFromProlog(decoded) ?: heuristic
+            }
+        }
         val text = String(stripBom(bytes), charset)
         return LoadedFile(text, charset, TextUtils.detectLineEnding(text), hadBom)
     }

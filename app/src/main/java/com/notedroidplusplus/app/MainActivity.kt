@@ -1452,6 +1452,21 @@ class MainActivity : AppCompatActivity(), PluginHost {
         }
     }
 
+    /** Notepad++ Convert-to: switch the save encoding after verifying the text fits. */
+    private fun convertToEncoding(name: String) {
+        val s = activeSession() ?: return
+        val target = runCatching { Charset.forName(name) }.getOrNull() ?: return
+        syncActiveDocument()
+        if (!TextUtils.canRepresent(s.document.text, target)) {
+            Toast.makeText(this, getString(R.string.convert_unrepresentable, name), Toast.LENGTH_LONG).show()
+            return
+        }
+        s.document = s.document.copy(encoding = name, modified = true)
+        refreshTabLabels()
+        updateStatus()
+        Toast.makeText(this, getString(R.string.convert_done, name), Toast.LENGTH_SHORT).show()
+    }
+
     private fun setEol(eol: String) {
         activeSession()?.let {
             it.document = it.document.copy(lineEnding = eol)
@@ -2483,10 +2498,32 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun showEncodingMenu() = popup {
         TextUtils.names().forEach { name -> item(name) { setEncoding(name) } }
+        item(getString(R.string.convert_to_title)) { showConvertToMenu() }
+        item(getString(R.string.charsets_title)) { showCharsetsMenu() }
         menu.add(getString(R.string.eol_title)).isEnabled = false
         item(getString(R.string.windows_format)) { setEol("\r\n") }
         item(getString(R.string.unix_format)) { setEol("\n") }
         item(getString(R.string.mac_format)) { setEol("\r") }
+    }
+
+    private fun showConvertToMenu() = popup {
+        val all = TextUtils.allCharsets()
+        all.forEach { cs -> item(cs.name()) { convertToEncoding(cs.name()) } }
+    }
+
+    private fun showCharsetsMenu() {
+        popup {
+            TextUtils.CHARSET_FAMILIES.forEach { (family, _) ->
+                item(family) { showCharsetFamilyMenu(family) }
+            }
+        }
+    }
+
+    private fun showCharsetFamilyMenu(family: String) {
+        val names = TextUtils.CHARSET_FAMILIES.firstOrNull { it.first == family }?.second ?: return
+        popup {
+            names.forEach { name -> item(name) { setEncoding(name) } }
+        }
     }
 
     private fun showLanguagesMenu() = popup {

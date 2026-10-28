@@ -18,6 +18,72 @@ object TextUtils {
 
     fun names(): List<String> = ENCODINGS.map { it.name() }
 
+    /** Character-set families mirroring the Notepad++ Encoding > Character Sets submenus. */
+    val CHARSET_FAMILIES: List<Pair<String, List<String>>> = listOf(
+        "Arabic" to listOf("ISO-8859-6", "windows-1256"),
+        "Baltic" to listOf("ISO-8859-4", "windows-1257"),
+        "Celtic" to listOf("ISO-8859-14"),
+        "Central European" to listOf("ISO-8859-2", "windows-1250", "IBM852"),
+        "Chinese" to listOf("Big5", "GB2312", "GBK", "GB18030", "EUC-CN"),
+        "Croatian" to listOf("ISO-8859-13"),
+        "Cyrillic" to listOf("ISO-8859-5", "KOI8-R", "KOI8-U", "IBM855", "IBM866", "windows-1251"),
+        "Greek" to listOf("ISO-8859-7", "windows-1253"),
+        "Hebrew" to listOf("ISO-8859-8", "windows-1255"),
+        "Japanese" to listOf("Shift_JIS", "EUC-JP", "ISO-2022-JP"),
+        "Korean" to listOf("EUC-KR", "ISO-2022-KR", "windows-949"),
+        "Latin" to listOf("ISO-8859-15", "ISO-8859-1", "ISO-8859-3", "ISO-8859-10"),
+        "Nordic" to listOf("ISO-8859-10"),
+        "Romanian" to listOf("ISO-8859-16"),
+        "South European" to listOf("ISO-8859-3"),
+        "Thai" to listOf("ISO-8859-11", "TIS-620", "windows-874"),
+        "Turkish" to listOf("ISO-8859-9", "windows-1254"),
+        "Vietnamese" to listOf("windows-1258"),
+        "Western European" to listOf("ISO-8859-1", "windows-1252", "MacRoman")
+    )
+
+    /** All charsets offered by the Encoding menu (base list + family members). */
+    fun allCharsets(): List<Charset> = (ENCODINGS.map { it.name() } + CHARSET_FAMILIES.flatMap { it.second })
+        .mapNotNull { name -> runCatching { Charset.forName(name) }.getOrNull() }
+        .distinctBy { it.name() }
+
+    /**
+     * Notepad++ Convert-to semantics for a buffer held as text: the glyphs stay
+     * unchanged and the save encoding switches to [to]. Fails (null) when the
+     * text cannot be represented in [to] without loss.
+     */
+    fun canRepresent(text: String, to: Charset): Boolean {
+        if (to == StandardCharsets.US_ASCII || to.name() == "US-ASCII") {
+            return text.all { it.code in 0..127 }
+        }
+        val encoder = to.newEncoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+        return try {
+            encoder.encode(java.nio.CharBuffer.wrap(text))
+            true
+        } catch (e: java.nio.charset.CharacterCodingException) {
+            false
+        }
+    }
+
+    /**
+     * Detects a charset declared in an XML declaration or HTML meta tag within a
+     * bounded 4 KB prefix, mirroring Notepad++ prolog-first detection.
+     */
+    fun detectFromProlog(text: String): Charset? {
+        val head = text.take(4096)
+        val trimmed = head.trimStart()
+        val declRe = "encoding=\\"([A-Za-z0-9._:-]+)\\"".toRegex()
+        val charsetRe = "charset=([A-Za-z0-9._:-]+)".toRegex(RegexOption.IGNORE_CASE)
+        val name = when {
+            trimmed.startsWith("<?xml") -> declRe.find(head)?.groupValues?.get(1)
+            head.contains("<meta", ignoreCase = true) ->
+                declRe.find(head)?.groupValues?.get(1) ?: charsetRe.find(head)?.groupValues?.get(1)
+            else -> null
+        } ?: return null
+        return runCatching { Charset.forName(name) }.getOrNull()
+    }
+
     fun detect(bytes: ByteArray): Charset {
         if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {
             return StandardCharsets.UTF_8

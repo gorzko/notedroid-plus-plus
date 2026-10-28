@@ -87,6 +87,10 @@
     <string name="restore_session_title">Restore session?</string>
     <string name="restore_session_msg">Restore %1$d previously open tab(s)?</string>
     <string name="encoding_title">Choose encoding</string>
+    <string name="convert_to_title">Convert to…</string>
+    <string name="charsets_title">Character Sets</string>
+    <string name="convert_done">Converted to %1$s</string>
+    <string name="convert_unrepresentable">Text cannot be represented in %1$s without loss; conversion cancelled</string>
     <string name="tabs_kept_dirty">%1$d tab(s) with unsaved changes were kept</string>
     <string name="action_zoom_out">Zoom Out</string>
     <string name="md_bold">Bold</string>

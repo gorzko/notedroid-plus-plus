@@ -2,7 +2,11 @@ package com.notedroidplusplus.app
 
 import com.notedroidplusplus.app.core.TextUtils
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
+import java.nio.charset.Charset
 import java.util.Random
 
 class TextUtilsTest {
@@ -191,3 +195,59 @@ class TextUtilsTest {
         assertEquals("", TextUtils.formatDateTime("bad pattern {{{", millis))
     }
 }
+
+    // ---- Encoding families, Convert-to, prolog detection (#51) ----
+
+    @Test
+    fun charsetFamiliesResolve() {
+        // every offered family charset must exist on the JVM
+        TextUtils.CHARSET_FAMILIES.forEach { (_, names) ->
+            names.forEach { n ->
+                assertTrue("missing charset $n", Charset.forName(n) != null)
+            }
+        }
+        // allCharsets is distinct and includes family members
+        val all = TextUtils.allCharsets().map { it.name() }
+        assertTrue(all.contains("KOI8-R"))
+        assertTrue(all.contains("Shift_JIS"))
+        assertTrue(all.contains("windows-1251"))
+        assertEquals(all.size, all.toSet().size)
+    }
+
+    @Test
+    fun canRepresentChecks() {
+        val cp1251 = Charset.forName("windows-1251")
+        assertTrue(TextUtils.canRepresent("hello", cp1251))
+        assertTrue(TextUtils.canRepresent("Привет", cp1251))
+        assertFalse(TextUtils.canRepresent("日本語", cp1251))
+        assertTrue(TextUtils.canRepresent("日本語", Charsets.UTF_8))
+        assertFalse(TextUtils.canRepresent("é", Charsets.US_ASCII))
+        assertTrue(TextUtils.canRepresent("plain ascii", Charsets.US_ASCII))
+    }
+
+    @Test
+    fun prologDetection() {
+        val xml = "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><root/>"
+        assertEquals(Charset.forName("ISO-8859-1"), TextUtils.detectFromProlog(xml))
+        val xmlSingle = "<?xml version='1.0' encoding='Shift_JIS'?><a/>"
+        // single quotes: charset= fallback covers the meta form; xml decl with quotes is primary
+        assertNull(TextUtils.detectFromProlog(xmlSingle))
+        val html = "<html><head><meta charset=\"windows-1252\"></head><body>x</body></html>"
+        assertEquals(Charset.forName("windows-1252"), TextUtils.detectFromProlog(html))
+        assertNull(TextUtils.detectFromProlog("plain text with no prolog at all"))
+        // bounded: prolog beyond 4 KB is ignored
+        val far = " ".repeat(5000) + "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>"
+        assertNull(TextUtils.detectFromProlog(far))
+    }
+
+    @Test
+    fun roundTripThroughEncodings() {
+        val sample = "héllo wörld 42"
+        listOf("UTF-8", "ISO-8859-1", "windows-1252", "KOI8-R", "Shift_JIS", "GB18030").forEach { name ->
+            val cs = Charset.forName(name)
+            if (TextUtils.canRepresent(sample, cs)) {
+                val bytes = sample.toByteArray(cs)
+                assertEquals(sample, String(bytes, cs))
+            }
+        }
+    }

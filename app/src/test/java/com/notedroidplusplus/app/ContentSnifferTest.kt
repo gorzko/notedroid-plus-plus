@@ -102,4 +102,30 @@ class ContentSnifferTest {
     fun maxSniffBytesIsBounded() {
         assertTrue(ContentSniffer.MAX_SNIFF_BYTES <= 8192)
     }
+
+    @Test
+    fun dotMDetectsObjectiveCByContent() {
+        val objc = "#import <Foundation/Foundation.h>\n@interface Foo : NSObject\n@end\n"
+        assertEquals(LanguageMode.OBJECTIVE_C, ContentSniffer.detectWithFileName("Model.m", objc))
+        assertEquals(LanguageMode.OBJECTIVE_C, ContentSniffer.sniffDotM(objc))
+    }
+
+    @Test
+    fun dotMDetectsMatlabByContent() {
+        val matlab = "function y = fib(n)\nif n < 2\ny = n;\nreturn\nend\ndisp(y)\n"
+        assertEquals(LanguageMode.MATLAB, ContentSniffer.detectWithFileName("fib.m", matlab))
+        assertEquals(LanguageMode.MATLAB, ContentSniffer.sniffDotM(matlab))
+    }
+
+    @Test
+    fun dotMDefaultsToMatlabWhenAmbiguous() {
+        assertEquals(LanguageMode.MATLAB, ContentSniffer.detectWithFileName("notes.m", "x = 1;\n"))
+    }
+
+    @Test
+    fun dotMImportAnyHeaderDetectsObjectiveC() {
+        val objc = "#import <stdio.h>\nint main() { return 0; }\n"
+        assertEquals(LanguageMode.OBJECTIVE_C, ContentSniffer.sniffDotM(objc))
+        assertEquals(LanguageMode.OBJECTIVE_C, ContentSniffer.detectWithFileName("main.m", objc))
+    }
 }

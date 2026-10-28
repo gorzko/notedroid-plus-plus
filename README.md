@@ -15,6 +15,12 @@ icon, dark theme, back/forward gesture support).
   Assembly, AutoIt, CoffeeScript, Lisp, Scheme, Pascal, Ada, Fortran, Haskell,
   Erlang, R, Tcl, Matlab, Objective-C, Visual Basic, COBOL, Smalltalk, PostScript,
   D, Nim, Forth, ActionScript) modeled on Notepad++ `stylers.model.xml` colors
+  - The `.m` extension is claimed by both Matlab and Objective-C; detection
+    sniffs the content (`@interface`/`@implementation`/`#import` vs
+    `function`/`classdef`/`end`) and defaults to Matlab when the file is ambiguous.
+    Sniffing is a cheap bounded prefix scan: any Objective-C marker in the
+    scanned head wins, so a Matlab file that mentions `@interface` in a
+    comment is detected as Objective-C until the user picks Matlab manually
 - Line numbers, current-line highlight, bracket matching
 - Find / Replace with match case, whole word, regular expressions, wrap-around
   (Find Next / Find Prev buttons, keyboard search action)
@@ -55,6 +61,14 @@ icon, dark theme, back/forward gesture support).
 - App language selection (27 Notepad++ locales + system default) via per-app
   locales, persisted and applied without changing the system language
 - Wrap lines, zoom in/out, functional settings screen
+- User Defined Languages (#50): define custom syntax highlighting (name,
+  extensions, keywords, types, line/block comments, string delimiters,
+  operators, case sensitivity) from Languages > Define User Language…, with
+  JSON import/export/delete; a UDL auto-applies only when no built-in
+  language claims the file's extension (explicit pick always wins, and an
+  explicitly picked UDL survives Save As to a different extension while an
+  auto-applied one is re-resolved). UDL highlighting does not style numbers
+  (parity with Notepad++ UDL, where numbers are a fixed style, not a list)
 
 **Notepad++ parity batch (settings, tools, panels)**
 - Recent Files History settings (max entries, name/full-path display, clear)

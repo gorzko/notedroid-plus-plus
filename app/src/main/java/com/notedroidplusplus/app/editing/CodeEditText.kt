@@ -30,6 +30,16 @@ class CodeEditText @JvmOverloads constructor(
             rehighlight()
         }
 
+    /**
+     * Active User Defined Language (#50): when non-null, its tokenizer replaces
+     * the built-in lexer; switching tabs or the Languages menu clears it.
+     */
+    var udl: UserDefinedLanguage? = null
+        set(value) {
+            field = value
+            rehighlight()
+        }
+
     var showLineNumbers: Boolean = true
         set(value) {
             field = value
@@ -405,7 +415,9 @@ class CodeEditText @JvmOverloads constructor(
         val docBytes = e.toString().toByteArray(Charsets.UTF_8).size.toLong()
         val tooLarge = highlightThresholdBytes in 1..docBytes
         if (colors.isNotEmpty() && !tooLarge) {
-            SyntaxHighlighter.tokenize(e.toString(), language).forEach { tok ->
+            val tokens = udl?.tokenize(e.toString())
+                ?: SyntaxHighlighter.tokenize(e.toString(), language)
+            tokens.forEach { tok ->
                 val color = colors[tok.kind] ?: return@forEach
                 e.setSpan(SyntaxSpan(color), tok.start, tok.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }

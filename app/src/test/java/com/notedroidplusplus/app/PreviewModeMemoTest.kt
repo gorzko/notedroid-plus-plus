@@ -30,12 +30,12 @@ class PreviewModeMemoTest {
     }
 
     @Test
-    fun cursorOnlyChangesDoNotRecompute() {
+    fun repeatedCallsAfterEditReuseCache() {
         val memo = PreviewModeMemo()
         val text = "# Heading\n\nbody text that is long enough to be realistic\n"
         memo.modeFor(text, false, false)
-        // Simulate a keystroke that appends at the end: content change must recompute once,
-        // but re-running with the same text (cursor move) must hit the cache.
+        // An edit appends at the end: content change must recompute once;
+        // re-running with the same text (e.g. cursor moves) must hit the cache.
         val edited = text + "more\n"
         memo.modeFor(edited, false, false)
         val after = memo.computations

@@ -207,4 +207,39 @@ class MarkdownActionsTest {
         val r = MarkdownActions.toggleSpan("ab", 1, 1, "**")
         assertEquals("a****b", r.text)
     }
+    @Test
+    fun italicGuardInsideBoldSpanNoOps() {
+        // Single-char marker inside a ** span: the guard no-ops (pinned behavior, m1).
+        val r = MarkdownActions.italic("**x**", 2, 2)
+        assertEquals("**x**", r.text)
+        assertEquals(2, r.newStart)
+        assertEquals(2, r.newEnd)
+    }
+
+    @Test
+    fun inlineCodeInsideBoldSpanStillWraps() {
+        // Backtick is not the adjacent marker; the guard does not fire, wrap path taken.
+        val r = MarkdownActions.inlineCode("**x**", 2, 2)
+        assertEquals("**``x**", r.text)
+        assertEquals(3, r.newStart)
+        assertEquals(3, r.newEnd)
+    }
+
+    @Test
+    fun strikeInsideBoldSpanStillWraps() {
+        // Double-tilde is not the adjacent marker; the guard does not fire, wrap path taken.
+        val r = MarkdownActions.strike("**x**", 2, 2)
+        assertEquals("**~~~~x**", r.text)
+        assertEquals(4, r.newStart)
+        assertEquals(4, r.newEnd)
+    }
+
+    @Test
+    fun caretBetweenAdjacentPairsNoOps() {
+        // a**b****c: caret between the closing ** of pair 1 and opening ** of pair 2.
+        val r = MarkdownActions.toggleSpan("a**b****c", 5, 5, "**")
+        assertEquals("a**b****c", r.text)
+        assertEquals(5, r.newStart)
+        assertEquals(5, r.newEnd)
+    }
 }

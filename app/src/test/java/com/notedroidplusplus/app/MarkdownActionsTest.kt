@@ -333,12 +333,15 @@ class MarkdownActionsTest {
     }
 
     @Test
-    fun collapsedCaretOnPartiallyMarkedLineWithTailTogglesLineOff() {
-        // M1: pin outer-edge behavior on a line with content after the pair.
+    fun collapsedCaretOnPartiallyMarkedLineWithTailWrapsWholeLine() {
+        // M1 (PR #82 review): pin outer-edge caret behavior on a line with
+        // content after the pair. Intended #76 semantics: with no selection the
+        // target is the whole current line; since the line is only partially
+        // marked, the whole line gets wrapped (no toggle-off, no span-edge wrap).
         val r = MarkdownActions.toggleSpan("**x** tail", 0, 0, "**")
-        assertEquals("x tail", r.text)
+        assertEquals("****x** tail**", r.text)
         val r2 = MarkdownActions.toggleSpan("**x** tail", 5, 5, "**")
-        assertEquals("x tail", r2.text)
+        assertEquals("****x** tail**", r2.text)
     }
 
     @Test

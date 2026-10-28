@@ -60,4 +60,21 @@
         <item>uk</item>
         <item>vi</item>
     </string-array>
+    <string-array name="theme_names">
+        <item>Default</item>
+        <item>Bespoke</item>
+        <item>Black board</item>
+        <item>Choco</item>
+        <item>Deep Black</item>
+        <item>khaki</item>
+        <item>Mono Industrial</item>
+        <item>MossyLawn</item>
+        <item>Navajo</item>
+        <item>Plastic Code Wrap</item>
+        <item>Rybicki</item>
+        <item>Solarized</item>
+        <item>Twilight</item>
+        <item>Vibrant Black</item>
+        <item>Zenburn</item>
+    </string-array>
 </resources>

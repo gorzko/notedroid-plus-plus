@@ -42,9 +42,9 @@ import com.notedroidplusplus.app.core.MacroStore
 import com.notedroidplusplus.app.core.SaveAsCoordinator
 import com.notedroidplusplus.app.core.WindowSort
 import com.notedroidplusplus.app.core.SessionStore
+import com.notedroidplusplus.app.core.ChangeHistory
 import com.notedroidplusplus.app.core.TabBar
 import com.notedroidplusplus.app.core.UdlExportQueue
-import com.notedroidplusplus.app.core.ChangeHistory
 import com.notedroidplusplus.app.core.TextUtils
 import com.notedroidplusplus.app.databinding.ActivityMainBinding
 import com.notedroidplusplus.app.editing.CodeEditText
@@ -185,7 +185,12 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private val udlExportLauncher =
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-            uri ?: return@registerForActivityResult
+            // Cancelled SAF dialog: drop the in-flight payload so the single-flight
+            // guard does not wedge future exports (review m2 on PR #82).
+            if (uri == null) {
+                udlExportQueue.consumeLatest()
+                return@registerForActivityResult
+            }
             val name = udlExportQueue.consumeLatest() ?: return@registerForActivityResult
             val udl = udlStore.findByName(name)
             if (udl == null) {
@@ -766,6 +771,8 @@ class MainActivity : AppCompatActivity(), PluginHost {
     ): TabSession {
         // Notepad++ behavior: opening a file already open in another tab
         // activates that tab instead of creating a duplicate (#74).
+        // Note: callers like openUriAtLine set caret/setSelection on the returned
+        // session afterwards, which overrides the caret activateTab just restored (m3).
         val uriString = uri.toString()
         val existingIdx = TabBar.indexOfUri(tabs, { it.document.uri }, uriString)
         if (existingIdx >= 0) {
@@ -2274,6 +2281,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         stopMonitoring()
         backupRunnable?.let { backupHandler.removeCallbacks(it) }
         backupRunnable = null
+        udlExportQueue.clear()
         super.onDestroy()
     }
 

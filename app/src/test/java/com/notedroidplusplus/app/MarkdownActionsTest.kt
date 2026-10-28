@@ -331,4 +331,27 @@ class MarkdownActionsTest {
         val r = MarkdownActions.bold("hello world", 0, 5)
         assertEquals("**hello** world", r.text)
     }
+
+    @Test
+    fun collapsedCaretOnPartiallyMarkedLineWithTailTogglesLineOff() {
+        // M1: pin outer-edge behavior on a line with content after the pair.
+        val r = MarkdownActions.toggleSpan("**x** tail", 0, 0, "**")
+        assertEquals("x tail", r.text)
+        val r2 = MarkdownActions.toggleSpan("**x** tail", 5, 5, "**")
+        assertEquals("x tail", r2.text)
+    }
+
+    @Test
+    fun headingHashRunWithoutSpaceIsNotToggledOff() {
+        // m4: "#hashtag" is not a heading (regex needs whitespace/EOL after the
+        // hashes); H1 must not silently no-op - it converts the line to a heading.
+        val r = MarkdownActions.heading("#hashtag", 0, 8, 1)
+        assertEquals("# #hashtag", r.text)
+    }
+
+    @Test
+    fun headingSevenHashLineStillPrepends() {
+        val r = MarkdownActions.heading("####### text", 0, 12, 2)
+        assertEquals("## ####### text", r.text)
+    }
 }

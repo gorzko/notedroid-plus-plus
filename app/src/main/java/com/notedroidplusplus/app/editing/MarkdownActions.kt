@@ -69,9 +69,10 @@ object MarkdownActions {
         val existing = existingMatch?.value?.length ?: 0
         val body = if (existing > 0) line.substring(existing) else line
         val lvl = level.coerceIn(1, MAX_HEADING_LEVEL)
-        // Same-level re-press toggles the heading off (#75); a different level replaces it
-        val leadingHashes = line.takeWhile { it == '#' }.length
-        val toggleOff = leadingHashes in 1..MAX_HEADING_LEVEL && leadingHashes == lvl
+        // Same-level re-press toggles the heading off (#75); a different level replaces it.
+        // Derive the level from the regex-matched prefix, not the raw hash count, so a
+        // non-heading like "#hashtag" (no space after the hashes) never toggles off (m4).
+        val toggleOff = existing > 0 && existingMatch!!.value.trimEnd().length == lvl
         val newLine = if (toggleOff) {
             body.trimEnd()
         } else {

@@ -22,11 +22,11 @@ object TabBar {
         (0 until count).filter { it != keep }.reversed()
 
     /** Close All to the Left of [anchor] (exclusive), reversed. */
-    fun closeAllToLeft(anchor: Int): List<Int> = (0 until anchor).reversed()
+    fun closeAllToLeft(anchor: Int): List<Int> = (0 until anchor).toList().reversed()
 
     /** Close All to the Right of [anchor] (exclusive), reversed. */
     fun closeAllToRight(count: Int, anchor: Int): List<Int> =
-        ((anchor + 1) until count).reversed()
+        ((anchor + 1) until count).toList().reversed()
 
     /** Elides a tab label to [maxChars] with an ellipsis; <=0 disables eliding. */
     fun elideLabel(label: String, maxChars: Int): String =

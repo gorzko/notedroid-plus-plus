@@ -1,6 +1,7 @@
 package com.notedroidplusplus.app
 
 import com.notedroidplusplus.app.preview.PreviewModeMemo
+import com.notedroidplusplus.app.preview.PreviewView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -23,7 +24,8 @@ class PreviewModeMemoTest {
         val memo = PreviewModeMemo()
         memo.modeFor("plain words\n", false, false)
         val before = memo.computations
-        assertNull(memo.modeFor("# now markdown\n", false, false))
+        val result = memo.modeFor("# now markdown\n", false, false)
+        assertEquals(PreviewView.Mode.MARKDOWN, result)
         assertEquals(before + 1, memo.computations)
     }
 

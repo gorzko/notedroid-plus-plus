@@ -186,11 +186,20 @@ class MarkdownActionsTest {
     }
 
     @Test
-    fun collapsedCaretAtSpanEdgeStillUnwraps() {
+    fun collapsedCaretAtSpanEdgeStillWraps() {
+        // Caret at the outer edge of the pair: existing wrap path (pre-PR-29 behavior preserved).
         val r = MarkdownActions.toggleSpan("**x**", 0, 0, "**")
-        assertEquals("x**", r.text)
+        assertEquals("****x**", r.text)
         val r2 = MarkdownActions.toggleSpan("**x**", 5, 5, "**")
-        assertEquals("**x", r2.text)
+        assertEquals("**x****", r2.text)
+    }
+
+    @Test
+    fun collapsedCaretBeforeClosingMarkerDoesNotDoubleWrap() {
+        val r = MarkdownActions.toggleSpan("**x**", 3, 3, "**")
+        assertEquals("**x**", r.text)
+        assertEquals(3, r.newStart)
+        assertEquals(3, r.newEnd)
     }
 
     @Test

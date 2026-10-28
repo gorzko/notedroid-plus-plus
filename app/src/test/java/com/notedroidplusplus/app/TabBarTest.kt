@@ -44,7 +44,7 @@ class TabBarTest {
         assertEquals(1, single.length)
         assertEquals(0x2026, single.last().code)
     }
-\n
+
     @Test
     fun indexOfUri_findsExistingTab() {
         data class T(val uri: String?)

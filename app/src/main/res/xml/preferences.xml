@@ -110,6 +110,36 @@
             app:defaultValue="false" />
     </PreferenceCategory>
 
+    <PreferenceCategory app:title="@string/pref_tab_bar_title">
+        <SwitchPreferenceCompat
+            app:key="tab_multi_line"
+            app:title="@string/pref_tab_multi_line"
+            app:defaultValue="false" />
+        <SwitchPreferenceCompat
+            app:key="tab_bar_locked"
+            app:title="@string/pref_tab_lock"
+            app:defaultValue="false" />
+        <SwitchPreferenceCompat
+            app:key="tab_double_click_close"
+            app:title="@string/pref_tab_double_click_close"
+            app:defaultValue="false" />
+        <SeekBarPreference
+            app:key="tab_max_label_chars"
+            app:title="@string/pref_tab_max_label"
+            app:defaultValue="0"
+            app:min="0"
+            android:max="40"
+            app:showSeekBarValue="true" />
+        <SwitchPreferenceCompat
+            app:key="tab_show_close"
+            app:title="@string/pref_tab_show_close"
+            app:defaultValue="true" />
+        <SwitchPreferenceCompat
+            app:key="tab_pin_enabled"
+            app:title="@string/pref_tab_pin"
+            app:defaultValue="true" />
+    </PreferenceCategory>
+
     <PreferenceCategory app:title="@string/pref_autocompletion">
         <SwitchPreferenceCompat
             app:key="word_completion"

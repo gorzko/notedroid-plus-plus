@@ -42,6 +42,7 @@ import com.notedroidplusplus.app.search.findNext
 import com.notedroidplusplus.app.search.findPrev
 import com.notedroidplusplus.app.search.replaceAll
 import com.notedroidplusplus.app.settings.SettingsActivity
+import com.notedroidplusplus.app.settings.ThemeRegistry
 import com.notedroidplusplus.app.tools.JsonTool
 import com.notedroidplusplus.app.tools.XmlTool
 import java.nio.charset.Charset
@@ -342,10 +343,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun applyPersistedSettings() {
-        val dark = prefs.getBoolean("dark_theme", false)
-        AppCompatDelegate.setDefaultNightMode(
-            if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
-        )
+        applyTheme(ThemeRegistry.byName(prefs.getString("theme_name", "Default") ?: "Default"))
         editor.showLineNumbers = prefs.getBoolean("show_line_numbers", true)
         editor.setHorizontallyScrolling(!prefs.getBoolean("wrap_lines", false))
         val fontSize = prefs.getInt("font_size", 14)
@@ -354,12 +352,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     override fun onResume() {
         super.onResume()
+        applyTheme(ThemeRegistry.byName(prefs.getString("theme_name", "Default") ?: "Default"))
         editor.showLineNumbers = prefs.getBoolean("show_line_numbers", true)
         editor.setHorizontallyScrolling(!prefs.getBoolean("wrap_lines", false))
         val fontSize = prefs.getInt("font_size", 14)
         editor.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat().coerceIn(8f, 40f))
-        editor.applyTheme(resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
-                android.content.res.Configuration.UI_MODE_NIGHT_YES)
     }
 
     // ---- PluginHost ----
@@ -1110,8 +1107,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     }
 
     private fun showViewMenu() = popup {
-        item(getString(R.string.theme_light)) { setDarkTheme(false) }
-        item(getString(R.string.theme_dark)) { setDarkTheme(true) }
+        item(getString(R.string.theme_picker)) { showThemeMenu() }
         item(getString(R.string.wrap_lines)) { setWrap(true) }
         item(getString(R.string.no_wrap_lines)) { setWrap(false) }
         item(getString(R.string.show_line_numbers)) { editor.showLineNumbers = !editor.showLineNumbers }
@@ -1119,17 +1115,37 @@ class MainActivity : AppCompatActivity(), PluginHost {
         item(getString(R.string.action_zoom_out)) { zoom(0.8f) }
     }
 
+    private fun showThemeMenu() {
+        popup {
+            ThemeRegistry.all.forEach { theme ->
+                item(theme.name) {
+                    applyThemeName(theme.name)
+                }
+            }
+        }
+    }
+
+    private fun applyThemeName(name: String) {
+        prefs.edit().putString("theme_name", name).apply()
+        applyTheme(ThemeRegistry.byName(name))
+    }
+
     private fun setWrap(wrap: Boolean) {
         prefs.edit().putBoolean("wrap_lines", wrap).apply()
         editor.setHorizontallyScrolling(!wrap)
     }
 
-    private fun setDarkTheme(dark: Boolean) {
-        prefs.edit().putBoolean("dark_theme", dark).apply()
-        AppCompatDelegate.setDefaultNightMode(
-            if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
-        )
-        editor.applyTheme(dark)
+    private fun applyTheme(theme: com.notedroidplusplus.app.settings.EditorTheme) {
+        binding.root.setBackgroundColor(theme.appBg)
+        binding.toolbar.setBackgroundColor(theme.toolbarBg)
+        binding.toolbar.setTitleTextColor(0xFFFFFFFF.toInt())
+        binding.tabLayout.setBackgroundColor(theme.tabBg)
+        binding.tabLayout.setTabTextColors(theme.tabText, theme.tabSelectedText)
+        binding.tabLayout.setSelectedTabIndicatorColor(theme.tabIndicator)
+        binding.statusBar.setBackgroundColor(theme.statusBg)
+        val statusViews = listOf(binding.statusPosition, binding.statusSelection, binding.statusEncoding, binding.statusEol, binding.statusLanguage)
+        statusViews.forEach { it.setTextColor(theme.statusText) }
+        editor.applyEditorTheme(theme)
     }
 
     private fun showEncodingMenu() = popup {

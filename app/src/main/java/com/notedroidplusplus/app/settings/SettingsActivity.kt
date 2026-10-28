@@ -3,7 +3,6 @@ package com.notedroidplusplus.app.settings
 import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.preference.PreferenceFragmentCompat
 import com.notedroidplusplus.app.R
 
@@ -17,13 +16,8 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        when (key) {
-            "dark_theme" -> {
-                val dark = getSharedPreferences("notedroid_settings", MODE_PRIVATE).getBoolean(key, false)
-                AppCompatDelegate.setDefaultNightMode(
-                    if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
-                )
-            }
+        if (key == "theme_name") {
+            // Applied by MainActivity in onResume; nothing to do here.
         }
     }
 

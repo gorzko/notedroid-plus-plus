@@ -19,4 +19,10 @@
         app:defaultValue="14"
         app:min="8"
         android:max="40" />
+    <ListPreference
+        app:key="theme_name"
+        app:title="Editor theme"
+        app:defaultValue="Default"
+        app:entries="@array/theme_names"
+        app:entryValues="@array/theme_names" />
 </PreferenceScreen>

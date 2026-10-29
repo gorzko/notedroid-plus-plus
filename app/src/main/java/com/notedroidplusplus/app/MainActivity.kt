@@ -44,6 +44,7 @@ import com.notedroidplusplus.app.core.WindowSort
 import com.notedroidplusplus.app.core.SessionStore
 import com.notedroidplusplus.app.core.ChangeHistory
 import com.notedroidplusplus.app.core.TabBar
+import com.notedroidplusplus.app.core.UdlExportQueue
 import com.notedroidplusplus.app.core.TextUtils
 import com.notedroidplusplus.app.databinding.ActivityMainBinding
 import com.notedroidplusplus.app.editing.CodeEditText
@@ -95,7 +96,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private lateinit var recentFiles: RecentFiles
     private lateinit var sessionStore: SessionStore
     private lateinit var udlStore: UserDefinedLanguageStore
-    private var pendingUdlExportName: String? = null
+    private val udlExportQueue = UdlExportQueue()
     private var scaleDetector: ScaleGestureDetector? = null
 
     data class TabSession(
@@ -184,9 +185,13 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private val udlExportLauncher =
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-            uri ?: return@registerForActivityResult
-            val name = pendingUdlExportName ?: return@registerForActivityResult
-            pendingUdlExportName = null
+            // Cancelled SAF dialog: drop the in-flight payload so the single-flight
+            // guard does not wedge future exports (review m2 on PR #82).
+            if (uri == null) {
+                udlExportQueue.consumeLatest()
+                return@registerForActivityResult
+            }
+            val name = udlExportQueue.consumeLatest() ?: return@registerForActivityResult
             val udl = udlStore.findByName(name)
             if (udl == null) {
                 Toast.makeText(this, R.string.udl_not_found, Toast.LENGTH_SHORT).show()
@@ -764,6 +769,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
         fileName: String,
         language: LanguageMode
     ): TabSession {
+        // Notepad++ behavior: opening a file already open in another tab
+        // activates that tab instead of creating a duplicate (#74).
+        // Note: callers like openUriAtLine set caret/setSelection on the returned
+        // session afterwards, which overrides the caret activateTab just restored (m3).
+        val uriString = uri.toString()
+        val existingIdx = TabBar.indexOfUri(tabs, { it.document.uri }, uriString)
+        if (existingIdx >= 0) {
+            activateTab(existingIdx)
+            return tabs[existingIdx]
+        }
         val current = activeSession()
         val reuse = current != null && current.document.uri == null &&
             !current.document.modified && current.document.text.isEmpty()
@@ -821,11 +836,16 @@ class MainActivity : AppCompatActivity(), PluginHost {
         return udlStore.forExtension(ext)
     }
 
-    private fun activateTab(index: Int) {
+    private fun activateTab(index: Int, syncOutgoing: Boolean = true) {
         if (index < 0 || index >= tabs.size) return
         if (previewMode != null) closePreview()
-        activeSession()?.let { it.caret = editor.selectionStart }
-        syncActiveDocument()
+        // Capture the outgoing session BEFORE `active` is reassigned so the
+        // editor content is always synced back to the session that owns it.
+        // Callers that already removed/mutated the active session (removeTab)
+        // pass syncOutgoing=false and persist the closing session themselves (#79).
+        val outgoing = if (syncOutgoing) activeSession() else null
+        outgoing?.let { it.caret = editor.selectionStart }
+        syncSession(outgoing)
         active = index
         val s = tabs[index]
         editor.filters = emptyArray()
@@ -855,7 +875,11 @@ class MainActivity : AppCompatActivity(), PluginHost {
     private fun isEditorLocked(): Boolean = activeSession()?.readOnly == true
 
     private fun syncActiveDocument() {
-        val s = activeSession() ?: return
+        syncSession(activeSession())
+    }
+
+    private fun syncSession(s: TabSession?) {
+        if (s == null) return
         val text = editor.text?.toString() ?: return
         if (text != s.document.text || editor.text.isNullOrEmpty() != s.document.text.isEmpty()) {
             val modified = s.document.uri != null || text.isNotEmpty()
@@ -1260,12 +1284,22 @@ class MainActivity : AppCompatActivity(), PluginHost {
 
     private fun removeTab(index: Int) {
         if (index < 0 || index >= tabs.size) return
+        if (active == index) tabs[index].caret = editor.selectionStart
         tabs[index].tab?.let { binding.tabLayout.removeTab(it) }
         tabs.removeAt(index)
-        if (tabs.isEmpty()) { addTab(null, null); return }
+        if (tabs.isEmpty()) {
+            // The closed session is discarded; a fresh scratch tab must not
+            // inherit its editor content via the outgoing sync (#79).
+            active = -1
+            addTab(null, null)
+            return
+        }
         val next = (index).coerceAtMost(tabs.size - 1)
         active = next
-        activateTab(next)
+        // The removed session owned the editor content; its document is already
+        // current (per-keystroke sync), so the target session must NOT be
+        // overwritten with the removed tab's text (#79).
+        activateTab(next, syncOutgoing = false)
     }
 
     // ---- Find / Replace ----
@@ -1819,7 +1853,12 @@ class MainActivity : AppCompatActivity(), PluginHost {
         AlertDialog.Builder(this)
             .setTitle(R.string.udl_export)
             .setItems(list.map { it.name }.toTypedArray()) { _, which ->
-                pendingUdlExportName = list[which].name
+                // Single-flight (#71): refuse a new export launch while one is pending
+                if (udlExportQueue.pending) {
+                    Toast.makeText(this, R.string.udl_export_in_progress, Toast.LENGTH_SHORT).show()
+                    return@setItems
+                }
+                udlExportQueue.begin(list[which].name)
                 udlExportLauncher.launch("${list[which].name}.udl.json")
             }
             .setNegativeButton(R.string.cancel, null)
@@ -2242,6 +2281,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         stopMonitoring()
         backupRunnable?.let { backupHandler.removeCallbacks(it) }
         backupRunnable = null
+        udlExportQueue.clear()
         super.onDestroy()
     }
 
@@ -2715,7 +2755,7 @@ class MainActivity : AppCompatActivity(), PluginHost {
         }
     }
 
-    private val recentMax: Int get() = RecentFilesSettings.parseMax(prefs.getString("recent_max", null))
+    private val recentMax: Int get() = RecentFilesSettings.resolveMax(runCatching { prefs.all["recent_max"] }.getOrNull())
     private val recentMode: RecentFilesSettings.DisplayMode
         get() = if (prefs.getString("recent_display", "name") == "path") RecentFilesSettings.DisplayMode.FULL_PATH
         else RecentFilesSettings.DisplayMode.NAME_ONLY

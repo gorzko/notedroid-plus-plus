@@ -378,6 +378,7 @@
     <string name="udl_exported">User language exported</string>
     <string name="udl_export_failed">Export failed: %1$s</string>
     <string name="udl_not_found">User language not found</string>
+    <string name="udl_export_in_progress">An export is already in progress</string>
     <string name="udl_deleted">Deleted user language %1$s</string>
     <string name="udl_saved">Saved user language %1$s</string>
     <string name="udl_save_failed">Could not save user language: %1$s</string>

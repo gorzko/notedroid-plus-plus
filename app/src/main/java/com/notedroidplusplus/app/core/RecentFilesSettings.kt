@@ -17,6 +17,19 @@ object RecentFilesSettings {
         return n.coerceIn(1, MAX_LIMIT)
     }
 
+    /**
+     * Resolves the max-entries setting from a raw SharedPreferences value (#72).
+     * `recent_max` is persisted by SeekBarPreference as an Int, but legacy
+     * installs may still hold a String, so both shapes are accepted; anything
+     * else falls back to the default. Always clamped to 1..MAX_LIMIT.
+     */
+    fun resolveMax(raw: Any?): Int = when (raw) {
+        is Int -> raw.coerceIn(1, MAX_LIMIT)
+        is Long -> raw.toInt().coerceIn(1, MAX_LIMIT)
+        is String -> parseMax(raw)
+        else -> DEFAULT_MAX
+    }
+
     fun <T> trim(entries: List<T>, max: Int): List<T> = entries.take(max)
 
     fun label(entry: RecentFiles.Entry, mode: DisplayMode): String =

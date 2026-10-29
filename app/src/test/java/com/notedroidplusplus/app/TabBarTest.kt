@@ -44,4 +44,14 @@ class TabBarTest {
         assertEquals(1, single.length)
         assertEquals(0x2026, single.last().code)
     }
+
+    @Test
+    fun indexOfUri_findsExistingTab() {
+        data class T(val uri: String?)
+        val tabs = listOf(T(null), T("a"), T("b"))
+        assertEquals(1, TabBar.indexOfUri(tabs, { it.uri }, "a"))
+        assertEquals(2, TabBar.indexOfUri(tabs, { it.uri }, "b"))
+        assertEquals(-1, TabBar.indexOfUri(tabs, { it.uri }, "c"))
+        assertEquals(-1, TabBar.indexOfUri(tabs, { it.uri }, "null"))
+    }
 }

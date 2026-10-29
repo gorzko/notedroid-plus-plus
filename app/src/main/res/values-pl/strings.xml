@@ -43,4 +43,5 @@
     <string name="yes">Tak</string>
     <string name="no">Nie</string>
     <string name="cancel">Anuluj</string>
+    <string name="udl_export_in_progress">Eksport jest już w toku</string>
 </resources>
